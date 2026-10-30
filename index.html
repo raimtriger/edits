@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0B0B0C">
+<title>LUDUS EDITS</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@300;500;700&family=Manrope:wght@400;500;600;700&family=Inter:wght@300&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0B0B0C; --card:#17171A; --card2:#232328; --line:#1E1E22;
+  --fg:#F2F2F0; --mute:#A3A3A8; --mute2:#8A8A90;
+  --acc:#D4FF3A; --chorus:#FFC24D;
+  --display:'Unbounded',system-ui,sans-serif;
+  --body:'Manrope',system-ui,-apple-system,sans-serif;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:var(--body)}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;padding:0}
+a{color:inherit;text-decoration:none}
+#app{max-width:480px;height:100%;margin:0 auto;display:flex;flex-direction:column;position:relative;overflow:hidden}
+main{flex:1;overflow-y:auto;padding:18px 18px 28px;-webkit-overflow-scrolling:touch}
+.screen{display:none;flex-direction:column;gap:14px;animation:in .35s ease}
+.screen.on{display:flex}
+@keyframes in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.h1{font-family:var(--display);font-weight:500;font-size:22px;letter-spacing:-.02em}
+.h2{font-family:var(--display);font-weight:500;font-size:18px}
+.lbl{font-size:12px;color:var(--mute);font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+.mute{color:var(--mute);font-size:13px;line-height:1.45}
+.card{background:var(--card);border-radius:18px;padding:16px}
+.row{display:flex;align-items:center;gap:12px}
+.btn{height:52px;border-radius:16px;font-weight:700;font-size:15px;display:flex;align-items:center;justify-content:center;transition:transform .12s}
+.btn:active{transform:scale(.97)}
+.btn.acc{background:var(--acc);color:#0B0B0C}
+.btn.dark{background:var(--card);font-weight:600}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.back{width:40px;height:40px;border-radius:12px;background:var(--card);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.chip{height:38px;padding:0 14px;border-radius:999px;background:var(--card);font-weight:600;font-size:13px}
+.chip.on{background:var(--acc);color:#0B0B0C}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:4px;border-radius:14px;background:var(--card)}
+.seg button{height:40px;border-radius:10px;font-weight:600;font-size:14px;color:#C9C9CD}
+.seg button.on{background:var(--fg);color:#0B0B0C}
+.tog{height:44px;border-radius:12px;background:var(--card);font-weight:600;font-size:13px}
+.tog.on{background:var(--fg);color:#0B0B0C}
+nav{height:74px;flex-shrink:0;border-top:1px solid var(--line);background:#0E0E10;display:grid;grid-template-columns:repeat(4,1fr);padding:0 8px env(safe-area-inset-bottom)}
+nav button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;font-size:12px;font-weight:600;color:var(--mute2)}
+nav button i{width:22px;height:3px;border-radius:2px;background:transparent;transition:background .2s}
+nav button.on{color:var(--fg)} nav button.on i{background:var(--acc)}
+.pill{display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;background:var(--card);font-size:12px;font-weight:600}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--acc);animation:pulse 1.6s infinite}
+@keyframes pulse{50%{opacity:.35}}
+
+/* превью эдита */
+.edit{position:relative;aspect-ratio:9/16;max-height:62vh;width:100%;border-radius:22px;overflow:hidden;background:#000;margin:0 auto}
+.edit canvas{position:absolute;inset:0;width:100%;height:100%}
+.edit .top{position:absolute;top:14px;left:16px;right:16px;display:flex;justify-content:space-between;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.85);z-index:2}
+.edit .lyr{position:absolute;left:20px;right:20px;top:50%;transform:translateY(-50%);text-align:center;z-index:2}
+.edit .cur{font-family:'Inter',var(--body);font-weight:300;font-size:clamp(22px,6.5vw,28px);text-shadow:0 2px 14px rgba(0,0,0,.55);transition:opacity .25s}
+.edit .nxt{font-family:'Inter',var(--body);font-weight:300;font-size:clamp(16px,4.6vw,20px);color:rgba(255,255,255,.55);margin-top:14px;text-shadow:0 2px 10px rgba(0,0,0,.5);transition:opacity .25s}
+.edit .bar{position:absolute;left:16px;right:16px;bottom:14px;height:3px;border-radius:2px;background:rgba(255,255,255,.25);z-index:2;overflow:hidden}
+.edit .bar b{display:block;height:100%;width:0;background:#fff}
+.tag{position:absolute;top:44px;left:16px;z-index:2;background:var(--acc);color:#0B0B0C;font-size:11px;font-weight:800;padding:4px 8px;border-radius:6px;letter-spacing:.03em}
+
+/* треки */
+.track{display:flex;align-items:center;gap:12px;padding:12px;border-radius:18px;background:var(--card);text-align:left;width:100%}
+.cover{width:52px;height:52px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-family:var(--display);color:#0B0B0C;flex-shrink:0}
+.upload{padding:22px 16px;border-radius:18px;border:1.5px dashed #3A3A40;display:flex;flex-direction:column;align-items:center;gap:6px;width:100%}
+
+/* строки */
+.wave{height:64px;border-radius:14px;background:var(--card);display:flex;align-items:center;gap:3px;padding:0 12px;overflow:hidden}
+.wave span{width:4px;border-radius:2px;background:#3A3A40;flex-shrink:0}
+.wave span.c{background:var(--chorus)}
+.ln{display:flex;align-items:center;gap:10px;padding:10px 10px 10px 14px;border-radius:14px;background:var(--card)}
+.ln .t{font-variant-numeric:tabular-nums;font-size:13px;color:var(--mute);width:48px;flex-shrink:0}
+.ln.ch .t{color:var(--chorus)}
+.ln .x{flex:1;min-width:0;font-size:15px}
+.ln button{width:36px;height:36px;border-radius:10px;background:var(--card2);font-size:18px}
+
+/* пак */
+.pk{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:16px;background:var(--card);text-align:left;width:100%}
+.box{width:26px;height:26px;border-radius:8px;border:2px solid #3A3A40;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:.2s}
+.pk.on .box{background:var(--acc);border-color:var(--acc)}
+.box svg{opacity:0}.pk.on .box svg{opacity:1}
+.prog{height:6px;border-radius:3px;background:var(--card2);overflow:hidden}
+.prog b{display:block;height:100%;background:var(--acc);transition:width .3s}
+
+/* тарифы */
+.plan{padding:14px 16px;border-radius:18px;background:var(--card);border:2px solid transparent;display:flex;flex-direction:column;gap:6px;text-align:left;width:100%}
+.plan.on{border-color:var(--acc)}
+.plan .p{font-family:var(--display);font-size:16px;font-weight:500}
+
+/* обработка трека */
+.steps{display:flex;flex-direction:column;gap:12px}
+.step{display:flex;align-items:center;gap:12px;font-size:15px;color:var(--mute2);transition:color .3s}
+.step i{width:22px;height:22px;border-radius:50%;border:2px solid #3A3A40;flex-shrink:0;transition:.3s}
+.step.run{color:var(--fg)} .step.run i{border-color:var(--acc);border-top-color:transparent;animation:spin .8s linear infinite}
+.step.ok{color:var(--fg)} .step.ok i{background:var(--acc);border-color:var(--acc)}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.links a{padding:14px 16px;display:flex;justify-content:space-between;border-bottom:1px solid var(--card2)}
+.links a:last-child{border:0}
+
+/* интро */
+#intro{position:fixed;inset:0;background:#000;z-index:50;display:flex;flex-direction:column;justify-content:center;padding:0 32px;gap:18px;transition:opacity .9s ease}
+#intro p{margin:0;font-family:var(--display);font-weight:500;font-size:clamp(26px,8vw,38px);line-height:1.15;letter-spacing:-.02em;opacity:0;transform:translateY(14px);transition:opacity .7s ease,transform .7s ease}
+#intro p.show{opacity:1;transform:none}
+#intro p.acc{color:var(--acc)}
+#intro small{position:absolute;bottom:calc(28px + env(safe-area-inset-bottom));left:0;right:0;text-align:center;color:#555;font-size:12px}
+#intro.out{opacity:0;pointer-events:none}
+
+#toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%) translateY(20px);background:var(--fg);color:#0B0B0C;padding:10px 16px;border-radius:12px;font-weight:700;font-size:14px;opacity:0;transition:.25s;z-index:60;pointer-events:none;white-space:nowrap}
+#toast.on{opacity:1;transform:translateX(-50%)}
+</style>
+</head>
+<body>
+
+<!-- ИНТРО -->
+<div id="intro" role="dialog" aria-label="Приветствие">
+  <p>Ты артист?</p>
+  <p>Уже надоело монтировать контент?</p>
+  <p class="acc">Мы готовы помочь!</p>
+  <small>тапни, чтобы пропустить</small>
+</div>
+
+<div id="app">
+<main>
+
+<!-- СЕГОДНЯ -->
+<section class="screen on" data-s="home">
+  <div class="row" style="justify-content:space-between">
+    <div style="font-family:var(--display);font-weight:500;font-size:20px;letter-spacing:-.02em">LUDUS<span style="color:var(--acc)"> EDITS</span></div>
+    <div class="pill"><span class="dot"></span>Автопилот · день 12</div>
+  </div>
+  <div class="mute" style="font-size:14px">Привет! Эдит на сегодня уже готов.</div>
+  <div class="edit" id="editBox">
+    <canvas id="cv"></canvas>
+    <div class="top"><span>«30» · припев</span><span>RAIM TRIGER</span></div>
+    <div class="tag">ПРИМЕР</div>
+    <div class="lyr"><div class="cur" id="cur"></div><div class="nxt" id="nxt"></div></div>
+    <div class="bar"><b id="bar"></b></div>
+  </div>
+  <div class="grid2">
+    <button class="btn acc" data-toast="Подпись и хэштеги скопированы">Выложить</button>
+    <button class="btn dark" id="another">Ещё вариант</button>
+  </div>
+  <div class="mute" style="text-align:center;font-size:12px;margin-top:-4px">Лучшее время выложить сегодня — 19:30</div>
+  <button class="card row" data-go="pack" style="justify-content:space-between;text-align:left;width:100%">
+    <span style="display:flex;flex-direction:column;gap:4px">
+      <span class="lbl" style="color:var(--acc)">Релиз через 5 дней</span>
+      <span style="font-size:16px;font-weight:600">«Неземная» — собрать пак</span>
+      <span class="mute" id="packMini">Готово 2 из 7 материалов</span>
+    </span>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#A3A3A8" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
+  </button>
+  <button class="card" data-go="fan" style="display:flex;flex-direction:column;gap:6px;text-align:left;width:100%">
+    <span class="lbl">Фан-эдиты</span>
+    <span style="font-size:16px;font-weight:600">14 фанатов смонтировали эдит на «30»</span>
+    <span class="mute">Их ролики набрали 23 400 просмотров · посмотреть, как это видит фанат →</span>
+  </button>
+</section>
+
+<!-- ТРЕКИ -->
+<section class="screen" data-s="tracks">
+  <div class="h1">Треки</div>
+  <button class="upload" data-go="process">
+    <span style="font-size:16px;font-weight:700">+ Загрузить трек целиком</span>
+    <span class="mute" style="text-align:center">mp3 или wav. Текст распознаем, припев найдём сами</span>
+  </button>
+  <div id="trackList" style="display:flex;flex-direction:column;gap:10px"></div>
+</section>
+
+<!-- ОБРАБОТКА ТРЕКА -->
+<section class="screen" data-s="process">
+  <div class="row"><button class="back" data-go="tracks" aria-label="Назад"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F2F2F0" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg></button>
+    <div><div class="h2">«Неземная»</div><div class="mute" style="font-size:12px">3:24 · wav · 38 МБ</div></div></div>
+  <div class="card steps" id="steps">
+    <div class="step"><i></i>Отделяем голос от музыки</div>
+    <div class="step"><i></i>Распознаём текст</div>
+    <div class="step"><i></i>Ставим строки по времени</div>
+    <div class="step"><i></i>Ищем припев</div>
+    <div class="step"><i></i>Монтируем первые 3 эдита</div>
+  </div>
+  <div class="mute">Обычно занимает 2–4 минуты. Можно закрыть аппку — пришлём уведомление в бот.</div>
+  <button class="btn acc" id="toLines" style="opacity:.35;pointer-events:none" data-go="lines">Проверить строки</button>
+</section>
+
+<!-- ПРОВЕРКА СТРОК -->
+<section class="screen" data-s="lines">
+  <div class="row"><button class="back" data-go="tracks" aria-label="Назад"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F2F2F0" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg></button>
+    <div><div class="h2">«Неземная»</div><div class="mute" style="font-size:12px">Проверь, вовремя ли загорается строка</div></div></div>
+  <div class="wave" id="wave"></div>
+  <div id="lineList" style="display:flex;flex-direction:column;gap:8px"></div>
+  <div class="mute" style="font-size:12px">Жёлтым — припев, нашли сами. Шаг сдвига 0,1 с</div>
+  <button class="btn acc" data-go="home" data-toast="Трек в автопилоте ✓">Всё верно — в автопилот</button>
+</section>
+
+<!-- СТУДИЯ -->
+<section class="screen" data-s="studio">
+  <div class="h1">Студия</div>
+  <div class="seg" id="seg"><button class="on" data-t="edits">Эдиты</button><button data-t="stories">Сторис</button><button data-t="youtube">YouTube</button></div>
+  <div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Трек</span>
+    <div class="card row" style="justify-content:space-between;padding:12px 14px"><span style="font-weight:600">«30» · припев 0:12–0:33</span><span class="mute">сменить</span></div></div>
+  <div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Футажи</span><div id="foot" style="display:flex;flex-wrap:wrap;gap:8px"></div></div>
+  <div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Текст</span>
+    <div class="grid3"><button class="tog on" data-m="line">Строкой</button><button class="tog" data-m="word">По слову</button><button class="tog" id="bw">Ч/Б</button></div></div>
+  <div class="card mute" id="hint"></div>
+  <button class="btn acc" id="mount" style="height:56px;font-size:16px">Смонтировать · ~40 с</button>
+</section>
+
+<!-- ПАК -->
+<section class="screen" data-s="pack">
+  <div class="row"><button class="back" data-go="home" aria-label="Назад"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F2F2F0" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg></button>
+    <div><div class="h2">Пак «Неземная»</div><div class="mute" style="font-size:12px">Релиз 5 ноября · всё к одной дате</div></div></div>
+  <div><div class="row" style="justify-content:space-between;font-size:13px;margin-bottom:6px"><span class="mute">Готово</span><b id="packCount"></b></div><div class="prog"><b id="packBar"></b></div></div>
+  <div id="packList" style="display:flex;flex-direction:column;gap:8px"></div>
+  <button class="btn acc" data-toast="Собираем остальное — пришлём в бот">Собрать остальное</button>
+</section>
+
+<!-- ТАРИФЫ -->
+<section class="screen" data-s="plans">
+  <div class="row"><button class="back" data-go="profile" aria-label="Назад"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F2F2F0" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg></button><div class="h2">Тарифы</div></div>
+  <div class="mute" style="font-size:14px">Монтажёр берёт ~1 500 ₽ за эдит. Здесь — эдит каждый день.</div>
+  <div id="planList" style="display:flex;flex-direction:column;gap:10px"></div>
+  <button class="btn acc" id="pay" style="height:56px;font-size:16px"></button>
+  <div class="mute" style="text-align:center;font-size:12px">Оплата картой через ЮKassa · автопродление · отмена в один тап</div>
+</section>
+
+<!-- ПРОФИЛЬ -->
+<section class="screen" data-s="profile">
+  <div class="row" style="gap:14px"><span style="width:58px;height:58px;border-radius:50%;background:var(--card2);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-size:18px">RT</span>
+    <div><div style="font-size:18px;font-weight:700">RAIM TRIGER</div><div class="mute">3 трека · 86 эдитов</div></div></div>
+  <button class="card row" data-go="plans" style="justify-content:space-between;text-align:left;width:100%">
+    <span style="display:flex;flex-direction:column;gap:4px"><span class="lbl" style="color:var(--acc)">Доступ «Основатель»</span><span class="mute" style="font-size:14px">Всё открыто · бесплатно</span></span>
+    <span style="font-weight:600;font-size:13px">Сменить</span></button>
+  <div class="card" style="display:flex;flex-direction:column;gap:10px">
+    <span style="font-size:15px;font-weight:700">Ссылка для фанатов</span>
+    <span class="mute">Фанаты бесплатно монтируют эдиты на твой трек. В каждом — твоя пресейв-ссылка.</span>
+    <div class="row" style="gap:8px"><span style="flex:1;min-width:0;padding:10px 12px;border-radius:10px;background:var(--bg);font-size:13px;color:#C9C9CD;overflow:hidden;white-space:nowrap">t.me/ludusedits_bot?start=raim</span>
+      <button class="chip on" style="border-radius:10px;height:40px" data-toast="Ссылка скопирована">Копировать</button></div>
+    <button class="mute" data-go="fan" style="text-align:left;font-size:13px;color:var(--acc)">Как это видит фанат →</button>
+  </div>
+  <div class="card row" style="justify-content:space-between">
+    <span style="display:flex;flex-direction:column;gap:4px"><span style="font-size:15px;font-weight:700">Позови артиста</span><span class="mute">+7 дней тебе и ему</span></span>
+    <button class="chip" style="border-radius:10px;height:40px;background:var(--card2)" data-toast="Приглашение скопировано">Пригласить</button></div>
+  <span class="lbl" style="margin-top:4px">Другие проекты автора</span>
+  <div class="card links" style="padding:0">
+    <a href="https://tap-app.ru" target="_blank"><b>TAP APP</b><span class="mute">tap-app.ru</span></a>
+    <a href="https://duddl.ru" target="_blank"><b>duddl</b><span class="mute">duddl.ru</span></a>
+    <a href="https://museupshow.ru" target="_blank"><b>МЬЮЗАП</b><span class="mute">выступить на шоу</span></a>
+  </div>
+</section>
+
+<!-- ФАН-ЭКРАН -->
+<section class="screen" data-s="fan">
+  <div class="row"><button class="back" data-go="profile" aria-label="Назад"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F2F2F0" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg></button><div class="mute" style="font-size:12px">Так видит фанат по ссылке артиста</div></div>
+  <div class="card" style="display:flex;flex-direction:column;gap:10px;align-items:center;text-align:center;padding:24px 16px">
+    <span style="width:72px;height:72px;border-radius:50%;background:var(--card2);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-size:22px">RT</span>
+    <div class="h2">RAIM TRIGER</div>
+    <div class="mute" style="font-size:14px">приглашает сделать эдит на трек «30»</div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Выбери настроение</span>
+    <div style="display:flex;flex-wrap:wrap;gap:8px" id="fanFoot"></div></div>
+  <button class="btn acc" data-toast="Готово! Эдит придёт в бот через ~40 с">Сделать эдит бесплатно</button>
+  <div class="mute" style="text-align:center;font-size:12px">В эдите: звук артиста, его пресейв-ссылка и маленький знак LUDUS EDITS</div>
+  <div class="card mute">Фанат выкладывает → звук трека набирает использования → алгоритм толкает трек. А фанат узнаёт про аппку.</div>
+</section>
+
+</main>
+
+<nav id="nav">
+  <button class="on" data-go="home"><i></i>Сегодня</button>
+  <button data-go="tracks"><i></i>Треки</button>
+  <button data-go="studio"><i></i>Студия</button>
+  <button data-go="profile"><i></i>Профиль</button>
+</nav>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ---------- Telegram Mini App ---------- */
+const TG = window.Telegram && Telegram.WebApp;
+try { if (TG && TG.initData) { TG.ready(); TG.expand(); TG.setHeaderColor('#0B0B0C'); TG.setBackgroundColor('#0B0B0C'); } } catch (e) {}
+const haptic = () => { try { TG && TG.HapticFeedback && TG.HapticFeedback.impactOccurred('light'); } catch (e) {} };
+document.addEventListener('click', e => { if (e.target.closest('button')) haptic(); });
+
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+
+/* ---------- навигация ---------- */
+const navMap = { lines: 'tracks', process: 'tracks', pack: 'home', plans: 'profile', fan: 'profile' };
+function go(s) {
+  $$('.screen').forEach(el => el.classList.toggle('on', el.dataset.s === s));
+  const n = navMap[s] || s;
+  $$('#nav button').forEach(b => b.classList.toggle('on', b.dataset.go === n));
+  $('main').scrollTop = 0;
+  if (s === 'process') runProcess();
+}
+document.addEventListener('click', e => {
+  const g = e.target.closest('[data-go]'); if (g) go(g.dataset.go);
+  const t = e.target.closest('[data-toast]'); if (t) toast(t.dataset.toast);
+});
+let tt;
+function toast(msg) { const el = $('#toast'); el.textContent = msg; el.classList.add('on'); clearTimeout(tt); tt = setTimeout(() => el.classList.remove('on'), 1800); }
+
+/* ---------- интро ---------- */
+(function intro() {
+  const box = $('#intro'), ps = $$('#intro p');
+  let done = false;
+  const finish = () => { if (done) return; done = true; box.classList.add('out'); setTimeout(() => box.remove(), 950); };
+  [150, 1250, 2350].forEach((d, i) => setTimeout(() => ps[i].classList.add('show'), d));
+  setTimeout(finish, 4200);
+  box.addEventListener('click', finish);
+})();
+
+/* ---------- живой пример эдита ---------- */
+const cv = $('#cv'), ctx = cv.getContext('2d');
+const PALETTES = [
+  ['#ff3d6e', '#ffb03a', '#2a0b3d'], ['#00e0ff', '#7a3cff', '#05061a'], ['#d4ff3a', '#00b38a', '#04140f'],
+  ['#ff6a3d', '#ffd23a', '#2b0a05'], ['#ff4fd8', '#4f6bff', '#0b0620'], ['#ffffff', '#ffb6c8', '#1a0a12']
+];
+const LYR = [
+  ['Теперь мне тридцать', 2.2], ['и что?', 1.4], ['Также хочется влюбляться', 2.4], ['Или просто отдыхать', 2.0],
+  ['От своих затей', 2.2], ['Не знаю сколько прошло', 2.4], ['Сегодня мне не семнадцать', 2.4],
+  ['Перестал чего-то ждать', 2.2], ['От других людей', 2.3]
+];
+const TOTAL = LYR.reduce((a, l) => a + l[1], 0);
+let scene, cutAt = 0, t0 = performance.now(), bw = false;
+function newScene() {
+  const p = PALETTES[Math.floor(Math.random() * PALETTES.length)];
+  scene = {
+    p, zoom: 1 + Math.random() * .15, dx: (Math.random() - .5) * 40, dy: (Math.random() - .5) * 40,
+    dots: Array.from({ length: 22 }, () => ({
+      x: Math.random(), y: Math.random(), r: 20 + Math.random() * 90,
+      c: p[Math.random() < .5 ? 0 : 1], a: .15 + Math.random() * .45, vx: (Math.random() - .5) * .02, vy: -.01 - Math.random() * .03
+    }))
+  };
+}
+function fit() { const r = cv.getBoundingClientRect(); cv.width = r.width * devicePixelRatio; cv.height = r.height * devicePixelRatio; }
+function draw(now) {
+  const t = (now - t0) / 1000;
+  if (t > cutAt) { newScene(); cutAt = t + .75 + Math.random() * .5; }
+  const W = cv.width, H = cv.height, s = scene;
+  const k = 1 + (cutAt - t) * -.04;
+  const g = ctx.createRadialGradient(W * .5 + s.dx, H * .45 + s.dy, 10, W * .5, H * .5, H * .75);
+  g.addColorStop(0, s.p[1]); g.addColorStop(.45, s.p[0]); g.addColorStop(1, s.p[2]);
+  ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  ctx.globalCompositeOperation = 'lighter';
+  for (const d of s.dots) {
+    d.x += d.vx * .016; d.y += d.vy * .016;
+    const x = d.x * W, y = d.y * H, r = d.r * devicePixelRatio * s.zoom * k;
+    const rg = ctx.createRadialGradient(x, y, 0, x, y, r);
+    rg.addColorStop(0, d.c); rg.addColorStop(1, 'transparent');
+    ctx.globalAlpha = d.a; ctx.fillStyle = rg; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = .28; ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  ctx.globalAlpha = 1;
+  cv.style.filter = bw ? 'grayscale(1) contrast(1.1)' : 'none';
+
+  const lt = t % TOTAL; let acc = 0, i = 0;
+  for (; i < LYR.length; i++) { if (lt < acc + LYR[i][1]) break; acc += LYR[i][1]; }
+  if (draw.i !== i) {
+    draw.i = i; const cur = $('#cur'), nxt = $('#nxt');
+    cur.style.opacity = 0; nxt.style.opacity = 0;
+    setTimeout(() => { cur.textContent = LYR[i][0]; nxt.textContent = LYR[(i + 1) % LYR.length][0]; cur.style.opacity = 1; nxt.style.opacity = 1; }, 180);
+  }
+  $('#bar').style.width = (lt / TOTAL * 100) + '%';
+  requestAnimationFrame(draw);
+}
+fit(); addEventListener('resize', fit); newScene(); requestAnimationFrame(draw);
+$('#another').onclick = () => { t0 = performance.now(); cutAt = 0; toast('Новый вариант смонтирован'); };
+
+/* ---------- треки ---------- */
+const TRACKS = [
+  { t: '«30»', s: '30', bg: '#C9C9CD', st: 'Готов · в автопилоте', c: 'var(--acc)', go: 'studio' },
+  { t: '«Неземная»', s: 'Н', bg: '#FF8A5C', st: 'Проверь строки · 1 мин', c: 'var(--chorus)', go: 'lines' },
+  { t: '«Мы»', s: 'М', bg: '#8C9BFF', st: 'Распознаём текст… 64%', c: 'var(--mute)', go: 'process' }
+];
+$('#trackList').innerHTML = TRACKS.map(x => `
+  <button class="track" data-go="${x.go}">
+    <span class="cover" style="background:${x.bg}">${x.s}</span>
+    <span style="flex:1;display:flex;flex-direction:column;gap:4px"><b style="font-size:16px;font-weight:600">${x.t}</b><span style="font-size:13px;color:${x.c}">${x.st}</span></span>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6E6E74" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
+  </button>`).join('');
+
+/* ---------- обработка ---------- */
+let procTimer = [];
+function runProcess() {
+  procTimer.forEach(clearTimeout); procTimer = [];
+  const st = $$('#steps .step'), b = $('#toLines');
+  st.forEach(s => s.className = 'step'); b.style.opacity = .35; b.style.pointerEvents = 'none';
+  st.forEach((s, i) => {
+    procTimer.push(setTimeout(() => s.classList.add('run'), i * 1100));
+    procTimer.push(setTimeout(() => { s.classList.remove('run'); s.classList.add('ok'); }, i * 1100 + 1000));
+  });
+  procTimer.push(setTimeout(() => { b.style.opacity = 1; b.style.pointerEvents = 'auto'; toast('Готово! Нашли припев: 0:12–0:27'); }, st.length * 1100));
+}
+
+/* ---------- строки ---------- */
+$('#wave').innerHTML = Array.from({ length: 60 }, (_, i) =>
+  `<span class="${i > 14 && i < 36 ? 'c' : ''}" style="height:${12 + Math.round(Math.abs(Math.sin(i * .7) * 22 + Math.sin(i * 1.9) * 10))}px"></span>`).join('');
+const LINES = [[12.4, 'Ты не с этой планеты', 1], [14.8, 'Неземная, неземная', 1], [17.1, 'Как тебя такую найти', 1],
+  [19.6, 'В городе, где все спят', 1], [22.0, 'Я рисую твой свет', 0], [24.5, 'На стекле у окна', 0]];
+const fmt = t => { const m = Math.floor(t / 60); return m + ':' + (t - m * 60).toFixed(1).padStart(4, '0'); };
+function renderLines() {
+  $('#lineList').innerHTML = LINES.map((l, i) => `
+    <div class="ln ${l[2] ? 'ch' : ''}"><span class="t">${fmt(l[0])}</span><span class="x">${l[1]}</span>
+    <button data-i="${i}" data-d="-0.1" aria-label="Раньше">−</button><button data-i="${i}" data-d="0.1" aria-label="Позже">+</button></div>`).join('');
+}
+$('#lineList').addEventListener('click', e => {
+  const b = e.target.closest('button[data-i]'); if (!b) return;
+  const l = LINES[+b.dataset.i]; l[0] = Math.max(0, Math.round((l[0] + +b.dataset.d) * 10) / 10); renderLines();
+});
+renderLines();
+
+/* ---------- студия ---------- */
+const HINTS = {
+  edits: 'Вертикальный эдит 9:16 для Reels, TikTok, Likee и VK Клипов. Футаж меняется в такт, текст ложится сам.',
+  stories: 'Сторис-караоке, пресейв со ссылкой band.link, пластинка с обложкой. Формат 1080×1920.',
+  youtube: 'Lyric-видео на весь трек 16:9 и обложка для ролика. Нужен трек целиком.'
+};
+const FOOT = ['Ночной город', 'Девушки и пары', 'Природа', 'Боке и огни', 'Мой архив', 'Кино · чистые права'];
+function chips(el, list, sel) {
+  el.innerHTML = list.map((f, i) => `<button class="chip ${i === sel ? 'on' : ''}" data-f="${i}">${f}</button>`).join('');
+  el.onclick = e => { const b = e.target.closest('[data-f]'); if (!b) return; $$('.chip', el).forEach(c => c.classList.toggle('on', c === b)); };
+}
+chips($('#foot'), FOOT, 0); chips($('#fanFoot'), FOOT.slice(0, 4), 1);
+$('#hint').textContent = HINTS.edits;
+$('#seg').onclick = e => { const b = e.target.closest('button'); if (!b) return; $$('#seg button').forEach(x => x.classList.toggle('on', x === b)); $('#hint').textContent = HINTS[b.dataset.t]; };
+$$('[data-m]').forEach(b => b.onclick = () => $$('[data-m]').forEach(x => x.classList.toggle('on', x === b)));
+$('#bw').onclick = e => { bw = !bw; e.currentTarget.classList.toggle('on', bw); };
+$('#mount').onclick = () => { const b = $('#mount'); b.textContent = 'Монтируем…'; setTimeout(() => { b.textContent = 'Смонтировать · ~40 с'; toast('Эдит готов — отправили в бот'); go('home'); }, 1600); };
+
+/* ---------- пак ---------- */
+const PACK = [['10 эдитов', 'Reels · TikTok · Likee · VK Клипы', 1], ['Сторис-пресейв', 'Ссылка band.link в стикере', 1],
+  ['Кружок-пластинка', 'Для Telegram-канала', 0], ['Lyric-видео', 'YouTube, весь трек 16:9', 0],
+  ['Шапки', 'VK · YouTube · TG-канал', 0], ['Караоке-версия', 'Минус + бегущий текст', 0], ['Живая обложка', 'Анимация для площадок и сторис', 0]];
+function renderPack() {
+  $('#packList').innerHTML = PACK.map((p, i) => `
+    <button class="pk ${p[2] ? 'on' : ''}" data-p="${i}"><span class="box"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0B0B0C" stroke-width="3"><path d="M5 12l5 5 9-10"/></svg></span>
+    <span style="display:flex;flex-direction:column;gap:2px"><b style="font-size:15px;font-weight:600">${p[0]}</b><span class="mute" style="font-size:12px">${p[1]}</span></span></button>`).join('');
+  const n = PACK.filter(p => p[2]).length;
+  $('#packCount').textContent = n + ' из ' + PACK.length; $('#packBar').style.width = (n / PACK.length * 100) + '%';
+  $('#packMini').textContent = 'Готово ' + n + ' из ' + PACK.length + ' материалов';
+}
+$('#packList').addEventListener('click', e => { const b = e.target.closest('[data-p]'); if (!b) return; PACK[+b.dataset.p][2] ^= 1; renderPack(); });
+renderPack();
+
+/* ---------- тарифы ---------- */
+const PLANS = [['Бесплатно', '0 ₽', '3 эдита с водяным знаком. Чтобы понять, как это работает.'],
+  ['Артист', '790 ₽/мес', 'Автопилот: эдит каждый день, сторис, пресейв. Без водяного знака.'],
+  ['Релиз', '1 490 ₽/мес', '3 эдита в день, lyric-видео для YouTube, караоке, живая обложка, шапки.'],
+  ['Студия', '4 990 ₽/мес', 'До 5 артистов. Для продюсеров и лейблов.']];
+let plan = 2;
+function renderPlans() {
+  $('#planList').innerHTML = PLANS.map((p, i) => `
+    <button class="plan ${i === plan ? 'on' : ''}" data-pl="${i}"><span class="row" style="justify-content:space-between;width:100%"><b style="font-size:16px">${p[0]}</b><span class="p">${p[1]}</span></span>
+    <span class="mute">${p[2]}</span></button>`).join('');
+  $('#pay').textContent = plan === 0 ? 'Начать бесплатно' : 'Оформить за ' + PLANS[plan][1];
+}
+$('#planList').addEventListener('click', e => { const b = e.target.closest('[data-pl]'); if (!b) return; plan = +b.dataset.pl; renderPlans(); });
+$('#pay').onclick = () => toast(plan === 0 ? 'Поехали! 3 эдита ждут' : 'Здесь откроется оплата ЮKassa');
+renderPlans();
+</script>
+</body>
+</html>
