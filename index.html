@@ -111,6 +111,12 @@ nav button.on{color:var(--fg)} nav button.on i{background:var(--acc)}
 #intro small{position:absolute;bottom:calc(28px + env(safe-area-inset-bottom));left:0;right:0;text-align:center;color:#555;font-size:12px}
 #intro.out{opacity:0;pointer-events:none}
 
+.mk{display:flex;flex-direction:column;gap:12px}
+.mkh{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px}
+.mkh b{width:24px;height:24px;border-radius:50%;background:var(--acc);color:#0B0B0C;display:flex;align-items:center;justify-content:center;font-size:12px}
+.vh{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+textarea{width:100%;background:var(--bg);color:var(--fg);border:1px solid var(--card2);border-radius:12px;padding:12px;font:15px/1.5 var(--body);resize:vertical}
+input[type=range]{accent-color:var(--acc)}
 #toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%) translateY(20px);background:var(--fg);color:#0B0B0C;padding:10px 16px;border-radius:12px;font-weight:700;font-size:14px;opacity:0;transition:.25s;z-index:60;pointer-events:none;white-space:nowrap}
 #toast.on{opacity:1;transform:translateX(-50%)}
 </style>
@@ -165,7 +171,7 @@ nav button.on{color:var(--fg)} nav button.on i{background:var(--acc)}
 <!-- ТРЕКИ -->
 <section class="screen" data-s="tracks">
   <div class="h1">Треки</div>
-  <button class="upload" data-go="process">
+  <button class="upload" data-go="make">
     <span style="font-size:16px;font-weight:700">+ Загрузить трек целиком</span>
     <span class="mute" style="text-align:center">mp3 или wav. Текст распознаем, припев найдём сами</span>
   </button>
@@ -190,11 +196,12 @@ nav button.on{color:var(--fg)} nav button.on i{background:var(--acc)}
 <!-- ПРОВЕРКА СТРОК -->
 <section class="screen" data-s="lines">
   <div class="row"><button class="back" data-go="tracks" aria-label="Назад"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F2F2F0" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg></button>
-    <div><div class="h2">«Неземная»</div><div class="mute" style="font-size:12px">Проверь, вовремя ли загорается строка</div></div></div>
+    <div><div class="h2" id="linesTitle">«Неземная»</div><div class="mute" style="font-size:12px">Проверь, вовремя ли загорается строка</div></div></div>
   <div class="wave" id="wave"></div>
+  <div class="mute" id="fragInfo" style="display:none"></div>
   <div id="lineList" style="display:flex;flex-direction:column;gap:8px"></div>
   <div class="mute" style="font-size:12px">Жёлтым — припев, нашли сами. Шаг сдвига 0,1 с</div>
-  <button class="btn acc" data-go="home" data-toast="Трек в автопилоте ✓">Всё верно — в автопилот</button>
+  <button class="btn acc" id="linesSave" data-go="home" data-toast="Трек в автопилоте ✓">Всё верно — в автопилот</button>
 </section>
 
 <!-- СТУДИЯ -->
@@ -202,12 +209,92 @@ nav button.on{color:var(--fg)} nav button.on i{background:var(--acc)}
   <div class="h1">Студия</div>
   <div class="seg" id="seg"><button class="on" data-t="edits">Эдиты</button><button data-t="stories">Сторис</button><button data-t="youtube">YouTube</button></div>
   <div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Трек</span>
-    <div class="card row" style="justify-content:space-between;padding:12px 14px"><span style="font-weight:600">«30» · припев 0:12–0:33</span><span class="mute">сменить</span></div></div>
+    <div class="card row" id="studioTrack" style="justify-content:space-between;padding:12px 14px"><span style="font-weight:600">«30» · припев 0:12–0:33</span><span class="mute">сменить</span></div><div id="liveTracks" style="display:none;flex-wrap:wrap;gap:8px"></div></div>
   <div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Футажи</span><div id="foot" style="display:flex;flex-wrap:wrap;gap:8px"></div></div>
   <div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Текст</span>
     <div class="grid3"><button class="tog on" data-m="line">Строкой</button><button class="tog" data-m="word">По слову</button><button class="tog" id="bw">Ч/Б</button></div></div>
   <div class="card mute" id="hint"></div>
   <button class="btn acc" id="mount" style="height:56px;font-size:16px">Смонтировать · ~40 с</button>
+  <div id="liveEdits" style="display:none;flex-direction:column;gap:10px"></div>
+</section>
+
+<!-- СОБРАТЬ ЭДИТ (реальный монтаж в браузере) -->
+<section class="screen" data-s="make">
+  <div class="row"><button class="back" data-go="studio" aria-label="Назад"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F2F2F0" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg></button>
+    <div><div class="h2">Собрать эдит</div><div class="mute" style="font-size:12px">Монтаж прямо в телефоне · тест без сервера</div></div></div>
+
+  <div class="card mk">
+    <div class="mkh"><b>1</b>Трек</div>
+    <label class="btn dark" for="fAudio" style="background:var(--card2)">Выбрать трек</label>
+    <input type="file" id="fAudio" accept="audio/*,video/*" class="vh">
+    <div id="aInfo" class="mute" style="display:none">
+      <div id="aName" style="color:var(--fg);font-weight:600;margin-bottom:8px"></div>
+      <div class="row" style="justify-content:space-between"><span>Начало отрывка</span><b id="startL" style="color:var(--fg)">0:00.0</b></div>
+      <input type="range" id="startR" min="0" max="10" step="0.1" value="0" style="width:100%;margin:10px 0">
+      <button class="chip" id="listen" style="background:var(--card2)">▶ Послушать отсюда</button>
+    </div>
+  </div>
+
+  <div class="card mk">
+    <div class="mkh"><b>2</b>Текст отрывка</div>
+    <textarea id="lyr" rows="6" placeholder="Каждая строка — с новой строки, как поётся&#10;Теперь мне тридцать&#10;и что?&#10;Также хочется влюбляться"></textarea>
+  </div>
+
+  <div class="card mk">
+    <div class="mkh"><b>3</b>Разметка под музыку</div>
+    <div class="mute">Включится трек с начала отрывка. Тапай большую кнопку в момент, когда начинается каждая строка. После последней — тапни ещё раз, где отрывок должен закончиться.</div>
+    <div id="tapBox" style="display:none;flex-direction:column;gap:10px">
+      <div id="tapNow" style="font-family:'Inter',var(--body);font-weight:300;font-size:22px;text-align:center;min-height:56px;display:flex;align-items:center;justify-content:center"></div>
+      <button id="tapBtn" class="btn acc" style="height:96px;font-size:18px">ТАП</button>
+      <button id="tapStop" class="chip" style="align-self:center;background:var(--card2)">Стоп</button>
+    </div>
+    <button class="btn dark" id="tapStart" style="background:var(--card2)">Разметить строки</button>
+    <div id="tapRes" class="mute"></div>
+  </div>
+
+  <div class="card mk">
+    <div class="mkh"><b>4</b>Футажи</div>
+    <label class="btn dark" for="fClips" style="background:var(--card2)">Выбрать видео из галереи</label>
+    <input type="file" id="fClips" accept="video/*" multiple class="vh">
+    <div id="clipInfo" class="mute">Без видео соберём на абстрактных огнях</div>
+  </div>
+
+  <div class="card mk">
+    <div class="mkh"><b>5</b>Стиль</div>
+    <div class="grid3"><button class="tog on" data-mm="line" style="background:var(--fg)">Строкой</button><button class="tog" data-mm="word" style="background:var(--card2)">По слову</button><button class="tog" id="mBw" style="background:var(--card2)">Ч/Б</button></div>
+  </div>
+
+  <button class="btn acc" id="render" style="height:56px;font-size:16px">Смонтировать</button>
+  <div id="rProg" style="display:none;flex-direction:column;gap:8px">
+    <div class="mute">Монтируем в реальном времени — не сворачивай экран</div>
+    <div class="prog"><b id="rBar" style="width:0"></b></div>
+  </div>
+  <div id="result" style="display:none;flex-direction:column;gap:10px">
+    <video id="outV" controls playsinline style="width:100%;border-radius:18px;background:#000;aspect-ratio:9/16;max-height:70vh"></video>
+    <div class="grid2"><a class="btn acc" id="dl">Скачать</a><button class="btn dark" id="share">Поделиться</button></div>
+    <div class="mute" style="font-size:12px;text-align:center">Если «Скачать» не сработает внутри Telegram — открой ссылку в браузере телефона</div>
+  </div>
+</section>
+
+<!-- ЗАГРУЗКА ТРЕКА НА СЕРВЕР -->
+<section class="screen" data-s="upload">
+  <div class="row"><button class="back" data-go="tracks" aria-label="Назад"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F2F2F0" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg></button>
+    <div><div class="h2">Новый трек</div><div class="mute" style="font-size:12px">Трек целиком · текст и припев найдём сами</div></div></div>
+  <div class="card mk">
+    <div class="mkh"><b>1</b>Файл трека</div>
+    <label class="btn dark" for="upFile" style="background:var(--card2)" id="upFileL">Выбрать mp3 или wav</label>
+    <input type="file" id="upFile" accept="audio/*" class="vh">
+  </div>
+  <div class="card mk">
+    <div class="mkh"><b>2</b>Название</div>
+    <input id="upTitle" placeholder="Например: 30" style="width:100%;background:var(--bg);color:var(--fg);border:1px solid var(--card2);border-radius:12px;padding:12px;font:15px var(--body)">
+  </div>
+  <div class="card mk">
+    <div class="mkh"><b>3</b>Текст песни <span class="mute" style="font-weight:500">· необязательно</span></div>
+    <textarea id="upLyrics" rows="8" placeholder="Вставь текст — строки встанут точнее. Без текста распознаем сами."></textarea>
+  </div>
+  <button class="btn acc" id="upSend" style="height:56px;font-size:16px">Загрузить</button>
+  <div id="upProg" class="prog" style="display:none"><b id="upBar" style="width:0"></b></div>
 </section>
 
 <!-- ПАК -->
@@ -291,7 +378,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 /* ---------- навигация ---------- */
-const navMap = { lines: 'tracks', process: 'tracks', pack: 'home', plans: 'profile', fan: 'profile' };
+const navMap = { lines: 'tracks', process: 'tracks', make: 'studio', pack: 'home', plans: 'profile', fan: 'profile' };
 function go(s) {
   $$('.screen').forEach(el => el.classList.toggle('on', el.dataset.s === s));
   const n = navMap[s] || s;
@@ -432,7 +519,7 @@ $('#hint').textContent = HINTS.edits;
 $('#seg').onclick = e => { const b = e.target.closest('button'); if (!b) return; $$('#seg button').forEach(x => x.classList.toggle('on', x === b)); $('#hint').textContent = HINTS[b.dataset.t]; };
 $$('[data-m]').forEach(b => b.onclick = () => $$('[data-m]').forEach(x => x.classList.toggle('on', x === b)));
 $('#bw').onclick = e => { bw = !bw; e.currentTarget.classList.toggle('on', bw); };
-$('#mount').onclick = () => { const b = $('#mount'); b.textContent = 'Монтируем…'; setTimeout(() => { b.textContent = 'Смонтировать · ~40 с'; toast('Эдит готов — отправили в бот'); go('home'); }, 1600); };
+$('#mount').onclick = () => go('make');
 
 /* ---------- пак ---------- */
 const PACK = [['10 эдитов', 'Reels · TikTok · Likee · VK Клипы', 1], ['Сторис-пресейв', 'Ссылка band.link в стикере', 1],
@@ -464,6 +551,385 @@ function renderPlans() {
 $('#planList').addEventListener('click', e => { const b = e.target.closest('[data-pl]'); if (!b) return; plan = +b.dataset.pl; renderPlans(); });
 $('#pay').onclick = () => toast(plan === 0 ? 'Поехали! 3 эдита ждут' : 'Здесь откроется оплата ЮKassa');
 renderPlans();
+
+/* =========================================================
+   НАСТОЯЩИЙ МОНТАЖ В БРАУЗЕРЕ
+   трек + текст + тап-разметка + видео из галереи -> mp4/webm
+   ========================================================= */
+const mk = { start: 0, lines: [], times: [], end: null, clips: [], mode: 'line', bw: false, name: '' };
+const aud = new Audio(); aud.preload = 'auto'; aud.setAttribute('playsinline', '');
+let listenTimer;
+
+$('#fAudio').onchange = e => {
+  const f = e.target.files[0]; if (!f) return;
+  aud.src = URL.createObjectURL(f); mk.name = f.name.replace(/\.[^.]+$/, '');
+  mk.times = []; mk.end = null; $('#tapRes').textContent = '';
+  aud.onloadedmetadata = () => {
+    $('#aInfo').style.display = 'block';
+    $('#aName').textContent = mk.name + ' · ' + fmt(aud.duration);
+    $('#startR').max = Math.max(0, aud.duration - 5).toFixed(1);
+  };
+};
+$('#startR').oninput = e => { mk.start = +e.target.value; $('#startL').textContent = fmt(mk.start); mk.times = []; mk.end = null; $('#tapRes').textContent = ''; };
+$('#listen').onclick = () => {
+  if (!aud.src) return;
+  if (!aud.paused) { aud.pause(); $('#listen').textContent = '▶ Послушать отсюда'; return; }
+  aud.currentTime = mk.start; aud.play(); $('#listen').textContent = '■ Стоп';
+  clearTimeout(listenTimer); listenTimer = setTimeout(() => { aud.pause(); $('#listen').textContent = '▶ Послушать отсюда'; }, 12000);
+};
+
+/* --- тап-разметка --- */
+let tapIdx = -1;
+function tapShow() {
+  $('#tapNow').textContent = tapIdx < mk.lines.length ? mk.lines[tapIdx] : '— конец отрывка —';
+  $('#tapNow').style.color = tapIdx < mk.lines.length ? 'var(--fg)' : 'var(--mute)';
+}
+$('#tapStart').onclick = () => {
+  if (!aud.src) return toast('Сначала выбери трек');
+  mk.lines = $('#lyr').value.split('\n').map(s => s.trim()).filter(Boolean);
+  if (!mk.lines.length) return toast('Вставь текст отрывка');
+  mk.times = []; mk.end = null; tapIdx = 0;
+  $('#tapBox').style.display = 'flex'; $('#tapStart').style.display = 'none'; $('#tapRes').textContent = '';
+  tapShow(); aud.currentTime = mk.start; aud.play();
+};
+function tapFinish(msg) {
+  aud.pause(); $('#tapBox').style.display = 'none'; $('#tapStart').style.display = 'flex';
+  $('#tapStart').textContent = 'Разметить заново'; $('#tapRes').textContent = msg;
+}
+$('#tapBtn').onclick = () => {
+  const t = aud.currentTime - mk.start;
+  if (tapIdx < mk.lines.length) { mk.times.push(t); tapIdx++; tapShow(); }
+  else { mk.end = t; tapFinish('Готово: ' + mk.lines.length + ' строк, отрывок ' + mk.end.toFixed(1) + ' с ✓'); }
+};
+$('#tapStop').onclick = () => {
+  if (mk.times.length === mk.lines.length && mk.times.length) { mk.end = aud.currentTime - mk.start; tapFinish('Готово: отрывок ' + mk.end.toFixed(1) + ' с ✓'); }
+  else { mk.times = []; tapFinish('Разметка сброшена — начни заново'); }
+};
+aud.addEventListener('timeupdate', () => {
+  if (tapIdx >= 0 && $('#tapBox').style.display === 'flex' && aud.currentTime - mk.start > 60) $('#tapStop').click();
+});
+
+/* --- футажи --- */
+$('#fClips').onchange = e => {
+  mk.clips.forEach(v => URL.revokeObjectURL(v.src));
+  mk.clips = [...e.target.files].slice(0, 20).map(f => {
+    const v = document.createElement('video');
+    v.muted = true; v.loop = true; v.playsInline = true; v.setAttribute('playsinline', ''); v.preload = 'auto';
+    v.src = URL.createObjectURL(f); v.load(); return v;
+  });
+  $('#clipInfo').textContent = mk.clips.length ? 'Выбрано видео: ' + mk.clips.length : 'Без видео соберём на абстрактных огнях';
+};
+
+/* --- стиль --- */
+function paintTog() {
+  $$('[data-mm]').forEach(b => { const on = b.dataset.mm === mk.mode; b.style.background = on ? 'var(--fg)' : 'var(--card2)'; b.style.color = on ? '#0B0B0C' : 'var(--fg)'; });
+  $('#mBw').style.background = mk.bw ? 'var(--fg)' : 'var(--card2)'; $('#mBw').style.color = mk.bw ? '#0B0B0C' : 'var(--fg)';
+}
+$$('[data-mm]').forEach(b => b.onclick = () => { mk.mode = b.dataset.mm; paintTog(); });
+$('#mBw').onclick = () => { mk.bw = !mk.bw; paintTog(); };
+paintTog();
+
+/* --- рендер --- */
+function wrapText(c, text, maxW) {
+  const words = text.split(/\s+/), out = []; let cur = '';
+  for (const w of words) { const t = cur ? cur + ' ' + w : w; if (c.measureText(t).width > maxW && cur) { out.push(cur); cur = w; } else cur = t; }
+  if (cur) out.push(cur); return out;
+}
+function drawCover(c, v, W, H) {
+  const vw = v.videoWidth, vh = v.videoHeight; if (!vw) return false;
+  const s = Math.max(W / vw, H / vh), dw = vw * s, dh = vh * s;
+  c.drawImage(v, (W - dw) / 2, (H - dh) / 2, dw, dh); return true;
+}
+function makeBokeh() {
+  let sc, cut = -1;
+  return (c, W, H, t) => {
+    if (t > cut) {
+      const p = PALETTES[Math.floor(Math.random() * PALETTES.length)];
+      sc = { p, dots: Array.from({ length: 18 }, () => ({ x: Math.random(), y: Math.random(), r: 30 + Math.random() * 110, c: p[Math.random() < .5 ? 0 : 1], a: .15 + Math.random() * .45, vy: -.01 - Math.random() * .03 })) };
+      cut = t + .8 + Math.random() * .4;
+    }
+    const g = c.createRadialGradient(W / 2, H * .45, 10, W / 2, H / 2, H * .75);
+    g.addColorStop(0, sc.p[1]); g.addColorStop(.45, sc.p[0]); g.addColorStop(1, sc.p[2]);
+    c.fillStyle = g; c.fillRect(0, 0, W, H); c.globalCompositeOperation = 'lighter';
+    for (const d of sc.dots) {
+      d.y += d.vy * .016; const x = d.x * W, y = d.y * H, r = d.r;
+      const rg = c.createRadialGradient(x, y, 0, x, y, r); rg.addColorStop(0, d.c); rg.addColorStop(1, 'transparent');
+      c.globalAlpha = d.a; c.fillStyle = rg; c.beginPath(); c.arc(x, y, r, 0, 7); c.fill();
+    }
+    c.globalCompositeOperation = 'source-over'; c.globalAlpha = 1;
+  };
+}
+function pickMime() {
+  const opts = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4;codecs=avc1', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'];
+  return opts.find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || '';
+}
+let audioGraph;
+async function renderEdit() {
+  if (!aud.src) return toast('Выбери трек');
+  if (!mk.lines.length || mk.times.length !== mk.lines.length || !mk.end) return toast('Разметь строки (шаг 3)');
+  if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) return toast('Этот браузер не умеет записывать видео');
+
+  const W = 720, H = 1280, cv2 = document.createElement('canvas'); cv2.width = W; cv2.height = H;
+  const c = cv2.getContext('2d');
+  try { await document.fonts.load('300 46px Inter'); } catch (e) {}
+
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!audioGraph) {
+    const ac = new AC(); const src = ac.createMediaElementSource(aud); const dest = ac.createMediaStreamDestination();
+    src.connect(dest); src.connect(ac.destination); audioGraph = { ac, dest };
+  }
+  await audioGraph.ac.resume();
+
+  const stream = new MediaStream([...cv2.captureStream(30).getVideoTracks(), ...audioGraph.dest.stream.getAudioTracks()]);
+  const mime = pickMime();
+  const rec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 6000000 } : undefined);
+  const chunks = []; rec.ondataavailable = e => e.data.size && chunks.push(e.data);
+
+  const clips = mk.clips; let shown = null, cur = -1, nextCut = 0;
+  for (const v of clips) { try { await v.play(); } catch (e) {} }
+  const bokeh = makeBokeh();
+  const dur = mk.end, ends = mk.times.map((t, i) => mk.times[i + 1] ?? dur);
+
+  $('#render').style.display = 'none'; $('#rProg').style.display = 'flex'; $('#result').style.display = 'none';
+  aud.currentTime = mk.start;
+  await new Promise(r => aud.addEventListener('seeked', r, { once: true }));
+  await aud.play(); rec.start(250);
+
+  await new Promise(resolve => {
+    function frame() {
+      const t = aud.currentTime - mk.start;
+      // фон
+      if (clips.length) {
+        if (t >= nextCut) {
+          let n = Math.floor(Math.random() * clips.length); if (clips.length > 1 && n === cur) n = (n + 1) % clips.length;
+          cur = n; const v = clips[n]; if (v.duration) v.currentTime = Math.random() * Math.max(0, v.duration - 2);
+          nextCut = t + .8 + Math.random() * .45;
+        }
+        const v = clips[cur]; if (v && v.readyState >= 2 && !v.seeking) shown = v;
+        c.filter = mk.bw ? 'grayscale(1) contrast(1.1)' : 'none';
+        if (!shown || !drawCover(c, shown, W, H)) { c.fillStyle = '#000'; c.fillRect(0, 0, W, H); }
+        c.filter = 'none';
+      } else {
+        c.filter = mk.bw ? 'grayscale(1)' : 'none'; bokeh(c, W, H, t); c.filter = 'none';
+      }
+      c.fillStyle = 'rgba(0,0,0,.18)'; c.fillRect(0, 0, W, H);
+
+      // текст
+      const i = mk.times.findIndex((s, k) => t >= s && t < ends[k]);
+      c.textAlign = 'center'; c.textBaseline = 'middle'; c.shadowColor = 'rgba(0,0,0,.55)'; c.shadowBlur = 18;
+      if (i >= 0) {
+        const s = mk.times[i], e = ends[i], line = mk.lines[i];
+        const a = Math.min(1, (t - s) / .18, (e - t) / .15);
+        if (mk.mode === 'word') {
+          const words = line.split(/\s+/), tot = words.reduce((x, w) => x + w.length + 2, 0);
+          let acc = s, word = words[0];
+          for (const w of words) { const d = (e - s) * (w.length + 2) / tot; if (t < acc + d) { word = w; break; } acc += d; }
+          c.font = '300 76px Inter, sans-serif'; c.globalAlpha = Math.max(0, Math.min(1, (t - acc) / .06, a)); c.fillStyle = '#fff';
+          c.fillText(word, W / 2, H * .5);
+        } else {
+          c.font = '300 46px Inter, sans-serif'; c.globalAlpha = Math.max(0, a); c.fillStyle = '#fff';
+          const rows = wrapText(c, line, W - 140);
+          rows.forEach((r, k) => c.fillText(r, W / 2, H * .5 + (k - (rows.length - 1) / 2) * 58));
+          if (mk.lines[i + 1]) {
+            c.font = '300 34px Inter, sans-serif'; c.globalAlpha = Math.max(0, a) * .5;
+            const nr = wrapText(c, mk.lines[i + 1], W - 160);
+            nr.forEach((r, k) => c.fillText(r, W / 2, H * .5 + rows.length * 29 + 60 + k * 44));
+          }
+        }
+      }
+      c.globalAlpha = 1; c.shadowBlur = 0;
+      c.font = '600 20px Manrope, sans-serif'; c.fillStyle = 'rgba(255,255,255,.55)'; c.fillText('LUDUS EDITS', W / 2, H - 60);
+
+      $('#rBar').style.width = Math.min(100, t / dur * 100) + '%';
+      if (t >= dur || aud.paused || aud.ended) { resolve(); return; }
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  });
+
+  aud.pause(); clips.forEach(v => v.pause());
+  await new Promise(r => { rec.onstop = r; rec.stop(); });
+  const type = rec.mimeType || mime || 'video/webm';
+  const ext = type.includes('mp4') ? 'mp4' : 'webm';
+  const blob = new Blob(chunks, { type }), url = URL.createObjectURL(blob);
+  $('#outV').src = url;
+  const name = (mk.name || 'edit') + '_edit.' + ext;
+  $('#dl').href = url; $('#dl').download = name;
+  $('#share').onclick = async () => {
+    const file = new File([blob], name, { type });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file] }); } catch (e) {} }
+    else toast('Поделиться не поддерживается — жми «Скачать»');
+  };
+  $('#rProg').style.display = 'none'; $('#render').style.display = 'flex'; $('#render').textContent = 'Смонтировать ещё вариант';
+  $('#result').style.display = 'flex'; toast('Эдит готов ✓');
+  $('#result').scrollIntoView({ behavior: 'smooth' });
+}
+$('#render').onclick = () => renderEdit().catch(err => {
+  console.error(err); toast('Ошибка: ' + (err.message || err));
+  $('#rProg').style.display = 'none'; $('#render').style.display = 'flex';
+});
+</script>
+
+<script>
+/* =========================================================
+   LIVE-РЕЖИМ: если аппка открыта с нашего сервера из Telegram —
+   треки, строки и монтаж идут через сервер. Иначе остаётся демо.
+   ========================================================= */
+(async function live() {
+  let ok = false;
+  try { const r = await fetch('api/health', { cache: 'no-store' }); ok = r.ok && (await r.json()).ok; } catch (e) {}
+  const dev = new URLSearchParams(location.search).get('dev');
+  const initData = (TG && TG.initData) || '';
+  if (!ok || (!initData && !dev)) return;
+  window.LIVE = true;
+  const H = initData ? { 'X-Init-Data': initData } : { 'X-Dev-User': dev };
+  const api = async (path, opt = {}) => {
+    const r = await fetch(path, { ...opt, headers: { ...H, ...(opt.headers || {}) } });
+    if (!r.ok) { let m = 'Ошибка ' + r.status; try { m = (await r.json()).detail || m; } catch (e) {} throw new Error(m); }
+    return r.json();
+  };
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  navMap.upload = 'tracks';
+  $('.upload').dataset.go = 'upload';
+
+  let tracks = [], cur = null, edits = [], selTrack = null, selFoot = 'mix';
+
+  /* профиль */
+  try {
+    const me = await api('api/me');
+    const nameEl = $('[data-s=profile] .row > div > div');
+    if (nameEl) nameEl.textContent = me.name;
+    $('[data-s=home] .mute').textContent = 'Привет, ' + me.name.split(' ')[0] + '! Загрузи трек — дальше всё сделаем сами.';
+    const plan = $('[data-s=profile] [data-go=plans] .lbl');
+    if (plan && !me.owner) { plan.textContent = 'Бесплатно'; plan.nextElementSibling.textContent = 'Осталось эдитов: ' + me.free_left; }
+  } catch (e) { toast(e.message); return; }
+
+  /* треки */
+  const ST = { queued: ['В очереди…', 'var(--mute)'], processing: ['Распознаём текст и ищем припев…', 'var(--mute)'],
+    ready: ['Готов · проверь строки', 'var(--acc)'], error: ['Ошибка', '#ff6b6b'] };
+  async function loadTracks() {
+    tracks = await api('api/tracks'); renderTracks(); renderStudioTracks();
+    clearTimeout(loadTracks.t);
+    if (tracks.some(t => t.status === 'queued' || t.status === 'processing')) loadTracks.t = setTimeout(() => loadTracks().catch(() => {}), 4000);
+  }
+  function renderTracks() {
+    $('#trackList').innerHTML = tracks.length ? tracks.map(t => {
+      const [s, c] = ST[t.status] || ['', ''];
+      return `<button class="track" data-tid="${t.id}"><span class="cover" style="background:#C9C9CD">${esc(t.title.slice(0, 2))}</span>
+        <span style="flex:1;display:flex;flex-direction:column;gap:4px;min-width:0"><b style="font-size:16px;font-weight:600">«${esc(t.title)}»</b>
+        <span style="font-size:13px;color:${c}">${t.status === 'error' ? esc(t.error || s) : s}</span></span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6E6E74" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg></button>`;
+    }).join('') : '<div class="mute" style="text-align:center;padding:20px">Пока нет треков — загрузи первый</div>';
+  }
+  $('#trackList').addEventListener('click', e => {
+    const b = e.target.closest('[data-tid]'); if (!b) return;
+    const t = tracks.find(x => x.id === b.dataset.tid);
+    if (t && t.status === 'ready') openLines(t); else toast(t && t.status === 'error' ? 'Трек с ошибкой — загрузи ещё раз' : 'Трек ещё обрабатывается');
+  });
+
+  /* проверка строк */
+  const player = new Audio(); let stopAt = 0;
+  player.addEventListener('timeupdate', () => { if (stopAt && player.currentTime >= stopAt) { player.pause(); stopAt = 0; } });
+  function openLines(t) {
+    cur = JSON.parse(JSON.stringify(t)); player.src = 'api/tracks/' + t.id + '/audio';
+    go('lines'); renderLiveLines();
+  }
+  function renderLiveLines() {
+    $('#linesTitle').textContent = '«' + cur.title + '»';
+    $('#fragInfo').style.display = 'block';
+    $('#fragInfo').textContent = 'Отрывок для эдита: ' + fmt(cur.frag_start) + ' – ' + fmt(cur.frag_end) + '. Тап по строке — послушать.';
+    $('#lineList').innerHTML = cur.lines.map((l, i) => `
+      <div class="ln ${l.chorus ? 'ch' : ''}"><span class="t">${fmt(l.start)}</span><span class="x" data-play="${i}" style="cursor:pointer">${esc(l.text)}</span>
+      <button data-li="${i}" data-d="-0.1" aria-label="Раньше">−</button><button data-li="${i}" data-d="0.1" aria-label="Позже">+</button></div>`).join('');
+  }
+  $('#lineList').addEventListener('click', e => {
+    if (!window.LIVE || !cur) return;
+    const p = e.target.closest('[data-play]');
+    if (p) { const l = cur.lines[+p.dataset.play]; player.currentTime = Math.max(0, l.start - 0.3); stopAt = l.end; player.play(); return; }
+    const b = e.target.closest('[data-li]'); if (!b) return;
+    const i = +b.dataset.li, l = cur.lines[i], d = +b.dataset.d;
+    l.start = Math.max(0, Math.round((l.start + d) * 10) / 10);
+    if (l.end < l.start + 0.3) l.end = l.start + 0.3;
+    if (i > 0 && cur.lines[i - 1].end > l.start) cur.lines[i - 1].end = l.start;
+    renderLiveLines();
+  });
+  const saveBtn = $('#linesSave'); saveBtn.removeAttribute('data-go'); saveBtn.removeAttribute('data-toast');
+  saveBtn.textContent = 'Сохранить и смонтировать';
+  saveBtn.onclick = async () => {
+    if (!cur) return;
+    try { await api('api/tracks/' + cur.id + '/lines', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lines: cur.lines }) });
+      selTrack = cur.id; player.pause(); toast('Строки сохранены ✓'); go('studio');
+    } catch (e) { toast(e.message); }
+  };
+
+  /* студия */
+  function renderStudioTracks() {
+    const ready = tracks.filter(t => t.status === 'ready');
+    $('#studioTrack').style.display = 'none';
+    const box = $('#liveTracks'); box.style.display = 'flex';
+    if (!ready.find(t => t.id === selTrack)) selTrack = ready[0] ? ready[0].id : null;
+    box.innerHTML = ready.length ? ready.map(t => `<button class="chip ${t.id === selTrack ? 'on' : ''}" data-st="${t.id}">«${esc(t.title)}»</button>`).join('')
+      : '<span class="mute">Сначала загрузи трек во вкладке «Треки»</span>';
+  }
+  $('#liveTracks').onclick = e => { const b = e.target.closest('[data-st]'); if (!b) return; selTrack = b.dataset.st; renderStudioTracks(); };
+  async function loadFoot() {
+    const foot = await api('api/footage');
+    if (!foot.find(f => f.key === selFoot)) selFoot = foot[0] ? foot[0].key : 'mix';
+    $('#foot').innerHTML = foot.length ? foot.map(f => `<button class="chip ${f.key === selFoot ? 'on' : ''}" data-fk="${f.key}">${esc(f.name)} · ${f.count}</button>`).join('')
+      : '<span class="mute">Библиотека футажей пуста — положи видео на сервер в /opt/edits/footage/</span>';
+  }
+  $('#foot').onclick = e => { const b = e.target.closest('[data-fk]'); if (!b) return; selFoot = b.dataset.fk; $$('#foot .chip').forEach(c => c.classList.toggle('on', c === b)); };
+  $('#mount').onclick = async () => {
+    if (!selTrack) return toast('Сначала загрузи трек');
+    const mode = ($('[data-m].on') || {}).dataset?.m || 'line';
+    try {
+      await api('api/edits', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ track_id: selTrack, mode, bw: $('#bw').classList.contains('on'), footage: selFoot }) });
+      toast('Монтируем — видео придёт в бот'); loadEdits();
+    } catch (e) { toast(e.message); }
+  };
+  async function loadEdits() {
+    edits = await api('api/edits');
+    const box = $('#liveEdits'); box.style.display = 'flex';
+    box.innerHTML = edits.length ? '<span class="lbl" style="margin-top:6px">Мои эдиты</span>' + edits.slice(0, 6).map(e => {
+      const t = tracks.find(x => x.id === e.track_id), name = t ? '«' + esc(t.title) + '»' : '';
+      const meta = (e.params.mode === 'word' ? 'по слову' : 'строкой') + (e.params.bw ? ' · ч/б' : '');
+      if (e.status === 'done') return `<div class="card" style="padding:10px;display:flex;flex-direction:column;gap:8px">
+        <video src="${e.url}" controls playsinline preload="metadata" style="width:100%;border-radius:12px;aspect-ratio:9/16;max-height:60vh;background:#000"></video>
+        <span class="mute">${name} · ${meta} · уже в боте</span></div>`;
+      return `<div class="card mute">${name} · ${meta} — ${e.status === 'error' ? 'ошибка: ' + esc(e.error) : e.status === 'rendering' ? 'монтируем…' : 'в очереди…'}</div>`;
+    }).join('') : '';
+    clearTimeout(loadEdits.t);
+    if (edits.some(e => e.status === 'queued' || e.status === 'rendering')) loadEdits.t = setTimeout(() => loadEdits().catch(() => {}), 4000);
+  }
+
+  /* загрузка трека */
+  $('#upFile').onchange = e => { const f = e.target.files[0]; if (!f) return; $('#upFileL').textContent = f.name;
+    if (!$('#upTitle').value) $('#upTitle').value = f.name.replace(/\.[^.]+$/, ''); };
+  $('#upSend').onclick = () => {
+    const f = $('#upFile').files[0]; if (!f) return toast('Выбери файл трека');
+    const fd = new FormData(); fd.append('audio', f); fd.append('title', $('#upTitle').value); fd.append('lyrics', $('#upLyrics').value);
+    const xhr = new XMLHttpRequest(); xhr.open('POST', 'api/tracks'); for (const k in H) xhr.setRequestHeader(k, H[k]);
+    $('#upProg').style.display = 'block'; $('#upSend').disabled = true; $('#upSend').textContent = 'Загружаем…';
+    xhr.upload.onprogress = e => { if (e.lengthComputable) $('#upBar').style.width = (e.loaded / e.total * 100) + '%'; };
+    const done = () => { $('#upSend').disabled = false; $('#upSend').textContent = 'Загрузить'; $('#upProg').style.display = 'none'; $('#upBar').style.width = 0; };
+    xhr.onload = () => { done();
+      if (xhr.status === 200) { toast('Загружено! Распознаём текст…'); $('#upFile').value = ''; $('#upFileL').textContent = 'Выбрать mp3 или wav';
+        $('#upTitle').value = ''; $('#upLyrics').value = ''; go('tracks'); }
+      else { let m = 'Ошибка ' + xhr.status; try { m = JSON.parse(xhr.responseText).detail || m; } catch (e) {} toast(m); } };
+    xhr.onerror = () => { done(); toast('Сеть отвалилась, попробуй ещё'); };
+    xhr.send(fd);
+  };
+
+  /* навигация */
+  const baseGo = go;
+  go = function (s) {
+    baseGo(s);
+    if (s === 'tracks') loadTracks().catch(e => toast(e.message));
+    if (s === 'studio') { loadTracks().catch(() => {}); loadFoot().catch(() => {}); loadEdits().catch(() => {}); }
+  };
+  loadTracks().catch(() => {});
+})();
 </script>
 </body>
 </html>
