@@ -19,6 +19,7 @@ r=c.execute(\"select id from inbounds where port=443 and protocol='vless'\").fet
 print(r[0] if r else '')")
 [ -n "$VID" ] || { echo "Не нашёл вход VPN на 443 (может, уже перенесён?)"; exit 1; }
 echo "  вход VPN id=$VID на 443"
+ss -ltn | grep -q ':4443 ' && { echo "Порт 4443 уже кем-то занят — стоп, ничего не менял"; exit 1; }
 
 echo "== бэкапы"
 cp "$DB" "/root/x-ui.db.bak-$STAMP"
@@ -53,10 +54,11 @@ if ! nginx -t 2>/tmp/nginx-t.log; then
 fi
 
 echo "== VPN: 443 -> 127.0.0.1:4443"
+systemctl stop x-ui
 python3 -c "
 import sqlite3;c=sqlite3.connect('$DB')
 c.execute(\"update inbounds set port=4443, listen='127.0.0.1' where id=$VID\");c.commit()"
-systemctl restart x-ui
+systemctl start x-ui
 for i in $(seq 1 15); do ss -ltn | grep -q '127.0.0.1:4443 ' && break; sleep 1; done
 ss -ltn | grep -q '127.0.0.1:4443 ' || { echo "VPN не поднялся на 4443 — откатываю"; bash /opt/edits/deploy/router-off.sh; exit 1; }
 ss -ltnp | grep ':443 ' | grep -q xray && { echo "xray всё ещё держит 443 — откатываю"; bash /opt/edits/deploy/router-off.sh; exit 1; }
