@@ -97,7 +97,10 @@ def upsert_user(tg: dict) -> sqlite3.Row:
 
 
 # ---------------- Telegram ----------------
-bot = Bot(BOT_TOKEN, WEBAPP_URL) if BOT_TOKEN else None
+# метка версии в адресе аппки: после обновления Telegram обязан загрузить свежий index.html, а не копию из кэша
+BUILD = time.strftime("%m%d-%H%M", time.localtime((WEB / "index.html").stat().st_mtime)) if (WEB / "index.html").exists() else "dev"
+APP_URL = (WEBAPP_URL + ("&" if "?" in WEBAPP_URL else "?") + "v=" + BUILD) if WEBAPP_URL else ""
+bot = Bot(BOT_TOKEN, APP_URL) if BOT_TOKEN else None
 
 
 def _on_start(tg_user: dict):
@@ -312,8 +315,12 @@ def track_peaks(tid: str, n: int = 240, u=Depends(current_user)):
         return json.loads(cache.read_text())
     import array
     import subprocess
-    raw = subprocess.run(["ffmpeg", "-v", "error", "-i", t["audio"], "-ac", "1", "-ar", "4000", "-f", "s16le", "-"],
-                         capture_output=True).stdout
+    pr = subprocess.run(["ffmpeg", "-v", "error", "-i", t["audio"], "-ac", "1", "-ar", "4000", "-f", "s16le", "-"],
+                        capture_output=True)
+    raw = pr.stdout
+    if not raw:
+        log.warning("peaks: ffmpeg вернул пусто для %s: %s", tid, pr.stderr[-300:])
+        raise HTTPException(500, "не удалось прочитать звук трека")
     a = array.array("h"); a.frombytes(raw[: len(raw) // 2 * 2])
     step = max(1, len(a) // n)
     peaks = [max((abs(x) for x in a[i:i + step]), default=0) for i in range(0, step * n, step)]
@@ -401,7 +408,7 @@ def media(eid: str):
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "queue": q("SELECT COUNT(*) c FROM edits WHERE status IN ('queued','rendering')", one=True)["c"]}
+    return {"ok": True, "build": BUILD, "queue": q("SELECT COUNT(*) c FROM edits WHERE status IN ('queued','rendering')", one=True)["c"]}
 
 
 # ---------------- фоновая очередь ----------------
@@ -537,4 +544,5 @@ def _startup():
 # фронтенд: отдаём ТОЛЬКО index.html (никаких статик-папок — рядом лежат .env и база)
 @app.get("/")
 def index():
-    return FileResponse(WEB / "index.html", media_type="text/html", headers={"Cache-Control": "no-cache"})
+    return FileResponse(WEB / "index.html", media_type="text/html",
+                        headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"})

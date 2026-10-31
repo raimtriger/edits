@@ -392,6 +392,7 @@ input[type=range]{accent-color:var(--acc)}
     <a href="https://duddl.ru" target="_blank"><b>duddl</b><span class="mute">duddl.ru</span></a>
     <a href="https://museupshow.ru" target="_blank"><b>МЬЮЗАП</b><span class="mute">выступить на шоу</span></a>
   </div>
+  <div class="mute" id="buildLbl" style="text-align:center;font-size:11px;opacity:.6;margin-top:6px"></div>
 </section>
 
 <!-- ФАН-ЭКРАН -->
@@ -945,6 +946,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
   const initData = (TG && TG.initData) || '';
   if (!ok || (!initData && !dev)) return;
   window.LIVE = true;
+  try { const hv = await (await fetch('api/health', { cache: 'no-store' })).json(); $('#buildLbl').textContent = 'версия ' + hv.build + ' · страница ' + (new URLSearchParams(location.search).get('v') || '—'); } catch (e) {}
   document.body.classList.add('live');
   const H = initData ? { 'X-Init-Data': initData } : { 'X-Dev-User': dev };
   const api = async (path, opt = {}) => {
@@ -1074,7 +1076,8 @@ $('#render').onclick = () => renderEdit().catch(err => {
   async function loadWave() {
     $('#fragWave').innerHTML = ''; peaks = [];
     const n = Math.max(50, Math.min(240, Math.floor($('#fragBox').getBoundingClientRect().width / 3) || 100));
-    try { const w = await api('api/tracks/' + cur.id + '/peaks?n=' + n); peaks = w.peaks; cur.waveDur = w.duration; } catch (e) { return; }
+    try { const w = await api('api/tracks/' + cur.id + '/peaks?n=' + n); peaks = w.peaks; cur.waveDur = w.duration; }
+    catch (e) { toast('Волна не загрузилась: ' + e.message); drawFrag(); return; }
     $('#fragWave').innerHTML = peaks.map(p => `<i style="height:${Math.max(6, p * 100)}%"></i>`).join('');
     drawFrag();
   }
