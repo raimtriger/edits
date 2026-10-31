@@ -164,8 +164,8 @@ def plan_cuts(footage: list[Path], length: float, cut: float, rng: random.Random
 def render_edit(job: EditJob) -> Path:
     st = job.style
     rng = random.Random(st.seed)
-    if not job.lines:
-        raise ValueError("нет строк текста")
+    if not job.lines and job.start is None:
+        raise ValueError("нет строк текста и не задан фрагмент")
     if not job.footage:
         raise ValueError("нет футажей")
 

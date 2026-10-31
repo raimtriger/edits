@@ -343,8 +343,12 @@ input[type=range]{accent-color:var(--acc)}
     <input type="file" id="upCover" accept="image/*" class="vh">
   </div>
   <div class="card mk">
-    <div class="mkh"><b>4</b>Текст песни <span class="mute" style="font-weight:500">· необязательно</span></div>
+    <div class="row" style="justify-content:space-between">
+      <div class="mkh"><b>4</b>Текст песни <span class="mute" style="font-weight:500">· необязательно</span></div>
+      <button class="chip" id="upNoText" style="height:32px;padding:0 12px;font-size:12px;background:var(--card2)">Нет текста</button>
+    </div>
     <textarea id="upLyrics" rows="8" placeholder="Вставь текст — строки встанут точнее. Без текста распознаем сами."></textarea>
+    <div class="mute" id="upNoTextInfo" style="display:none">Композиция без слов: эдит без субтитров, фрагмент выберем по самому яркому месту.</div>
   </div>
   <button class="btn acc" id="upSend" style="height:56px;font-size:16px">Загрузить</button>
   <div id="upProg" class="prog" style="display:none"><b id="upBar" style="width:0"></b></div>
@@ -1130,7 +1134,8 @@ $('#render').onclick = () => renderEdit().catch(err => {
     $('#lnCoverPrev').style.backgroundImage = cur.cover_url ? `url('${cur.cover_url}')` : '';
     $('#lnCoverTxt').textContent = cur.cover_url ? 'Загружена ✓' : 'Нужна для анимаций и сторис';
     $('#fragInfo').style.display = 'block';
-    $('#fragInfo').textContent = 'Тап по строке — послушать её. Блеклые строки не попадут в эдит.';
+    $('#fragInfo').textContent = cur.instrumental ? 'Композиция без слов — текст не нужен. Двигай рамку, чтобы выбрать кусок.'
+      : 'Тап по строке — послушать её. Блеклые строки не попадут в эдит.';
     $('#lineList').innerHTML = cur.lines.map((l, i) => `
       <div class="ln ${l.chorus ? 'ch' : ''}" style="opacity:${l.end > cur.frag_start && l.start < cur.frag_end ? 1 : .4}"><span class="t">${fmt(l.start)}</span><span class="x" data-play="${i}" style="cursor:pointer">${esc(l.text)}</span>
       <button data-li="${i}" data-d="-0.1" aria-label="Раньше">−</button><button data-li="${i}" data-d="0.1" aria-label="Позже">+</button></div>`).join('');
@@ -1289,6 +1294,14 @@ $('#render').onclick = () => renderEdit().catch(err => {
   }
 
   /* загрузка трека */
+  let noText = false;
+  $('#upNoText').onclick = () => {
+    noText = !noText;
+    $('#upNoText').classList.toggle('on', noText);
+    $('#upNoText').style.background = noText ? 'var(--acc)' : 'var(--card2)';
+    $('#upLyrics').style.display = noText ? 'none' : '';
+    $('#upNoTextInfo').style.display = noText ? 'block' : 'none';
+  };
   $('#upCover').onchange = e => { const f = e.target.files[0]; if (!f) return;
     $('#upCoverPrev').style.backgroundImage = `url('${URL.createObjectURL(f)}')`; $('#upCoverL').textContent = 'Сменить картинку'; };
   $('#upFile').onchange = e => { const f = e.target.files[0]; if (!f) return; $('#upFileL').textContent = f.name;
@@ -1299,7 +1312,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
     const f = $('#upFile').files[0]; if (!f) return toast('Выбери файл трека');
     const dur = await fileDuration(f);
     if (dur > 8 * 60) return toast('Трек длиннее 8 минут — загрузи сам трек, не сет');
-    const fd = new FormData(); fd.append('audio', f); fd.append('title', $('#upTitle').value); fd.append('lyrics', $('#upLyrics').value);
+    const fd = new FormData(); fd.append('audio', f); fd.append('title', $('#upTitle').value); fd.append('lyrics', noText ? '' : $('#upLyrics').value); fd.append('instrumental', noText ? 'true' : 'false');
     const cv = $('#upCover').files[0]; if (cv) fd.append('cover', cv);
     const xhr = new XMLHttpRequest(); xhr.open('POST', 'api/tracks'); for (const k in H) xhr.setRequestHeader(k, H[k]);
     $('#upProg').style.display = 'block'; $('#upSend').disabled = true; $('#upSend').textContent = 'Загружаем…';

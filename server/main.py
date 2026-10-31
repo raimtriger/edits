@@ -71,8 +71,11 @@ with lock:
     CREATE TABLE IF NOT EXISTS edits(id TEXT PRIMARY KEY, user_id INTEGER, track_id TEXT, params TEXT,
         status TEXT, video TEXT, error TEXT, created REAL);
     """)
-    if "cover" not in [r[1] for r in db.execute("PRAGMA table_info(tracks)")]:
+    cols = [r[1] for r in db.execute("PRAGMA table_info(tracks)")]
+    if "cover" not in cols:
         db.execute("ALTER TABLE tracks ADD COLUMN cover TEXT")  # обложка трека
+    if "instrumental" not in cols:
+        db.execute("ALTER TABLE tracks ADD COLUMN instrumental INTEGER DEFAULT 0")  # композиция без слов
     db.commit()
 
 
@@ -133,6 +136,7 @@ def track_json(t: sqlite3.Row) -> dict:
     return {"id": t["id"], "title": t["title"], "status": t["status"], "error": t["error"],
             "duration": t["duration"], "frag_start": t["frag_start"], "frag_end": t["frag_end"],
             "lines": json.loads(t["lines"]) if t["lines"] else [],
+            "instrumental": bool(t["instrumental"]),
             "cover_url": f"api/tracks/{t['id']}/cover?v={int(Path(t['cover']).stat().st_mtime)}"
             if t["cover"] and Path(t["cover"]).exists() else None}
 
@@ -248,6 +252,7 @@ async def save_cover(tid: str, cover: UploadFile) -> str:
 
 @app.post("/api/tracks")
 async def upload_track(audio: UploadFile = File(...), title: str = Form(""), lyrics: str = Form(""),
+                       instrumental: bool = Form(False),
                        cover: UploadFile | None = File(None), u=Depends(current_user)):
     tid = uuid.uuid4().hex[:12]
     ext = (Path(audio.filename or "a.mp3").suffix or ".mp3").lower()[:6]
@@ -272,6 +277,8 @@ async def upload_track(audio: UploadFile = File(...), title: str = Form(""), lyr
     title = title.strip() or Path(audio.filename or "Трек").stem
     q("INSERT INTO tracks(id,user_id,title,audio,lyrics,status,duration,created) VALUES(?,?,?,?,?,?,?,?)",
       (tid, u["id"], title[:80], str(path), lyrics.strip(), "queued", dur, time.time()))
+    if instrumental:
+        q("UPDATE tracks SET instrumental=1, lyrics='' WHERE id=?", (tid,))
     if cover is not None and cover.filename:
         q("UPDATE tracks SET cover=? WHERE id=?", (await save_cover(tid, cover), tid))
     wake.set()
@@ -433,9 +440,39 @@ def run_job(cmd: str, args: dict, timeout: int = 1800) -> dict:
     return json.loads(p.stdout.strip().splitlines()[-1])
 
 
+def loudest_fragment(audio: str, dur: float, length: float = 20.0) -> tuple[float, float]:
+    """Для композиции без слов: самый громкий/насыщенный кусок (обычно кульминация), не с самого начала."""
+    import array
+    import subprocess
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-i", audio, "-ac", "1", "-ar", "4000", "-f", "s16le", "-"],
+                         capture_output=True).stdout
+    a = array.array("h"); a.frombytes(raw[: len(raw) // 2 * 2])
+    sec = [sum(x * x for x in a[i:i + 4000]) / 4000 for i in range(0, len(a) - 4000, 4000)]
+    length = min(length, max(3.0, dur - 1))
+    n = int(length)
+    if len(sec) <= n:
+        return (0.0, round(min(dur, length), 2))
+    best, best_i = -1.0, 0
+    lo = int(len(sec) * 0.1)
+    for i in range(lo, len(sec) - n):
+        v = sum(sec[i:i + n])
+        if v > best:
+            best, best_i = v, i
+    return (float(best_i), float(best_i + n))
+
+
 def process_track(t: sqlite3.Row):
     q("UPDATE tracks SET status='processing' WHERE id=?", (t["id"],))
     dur = render.probe_duration(Path(t["audio"]))
+    if t["instrumental"]:
+        fs, fe = loudest_fragment(t["audio"], dur)
+        q("UPDATE tracks SET lines='[]', frag_start=?, frag_end=?, duration=?, status='ready' WHERE id=?",
+          (fs, fe, dur, t["id"]))
+        chat = tg_of(t["user_id"])
+        if bot and chat:
+            bot.send_message(chat, f"«{t['title']}» готов: композиция без слов, выбрали самый яркий кусок "
+                                   f"({fs:.0f}–{fe:.0f} с). Можно сдвинуть рамку и монтировать.", with_app_button=True)
+        return
     lyr = [l.strip() for l in (t["lyrics"] or "").splitlines() if l.strip()]
     if FAKE_ASR:
         words, segs = align.fake_transcribe(t["lyrics"] or "ля ля ля", dur)
