@@ -337,6 +337,27 @@ def track_peaks(tid: str, n: int = 240, u=Depends(current_user)):
     return out
 
 
+@app.delete("/api/tracks/{tid}")
+def delete_track(tid: str, u=Depends(current_user)):
+    """Удаляет трек, его обложку, кэш волны и все эдиты по нему (если не монтируются прямо сейчас)."""
+    t = q("SELECT * FROM tracks WHERE id=? AND user_id=?", (tid, u["id"]), one=True)
+    if not t:
+        raise HTTPException(404)
+    if t["status"] == "processing" or q("SELECT 1 FROM edits WHERE track_id=? AND status='rendering'", (tid,), one=True):
+        raise HTTPException(409, "трек сейчас в работе — удалить можно после монтажа")
+    for e in q("SELECT video FROM edits WHERE track_id=?", (tid,)):
+        if e["video"]:
+            Path(e["video"]).unlink(missing_ok=True)
+    audio = Path(t["audio"])
+    for f in audio.parent.glob(audio.stem + "*"):
+        f.unlink(missing_ok=True)
+    if t["cover"]:
+        Path(t["cover"]).unlink(missing_ok=True)
+    q("DELETE FROM edits WHERE track_id=?", (tid,))
+    q("DELETE FROM tracks WHERE id=?", (tid,))
+    return {"ok": True}
+
+
 @app.get("/api/tracks/{tid}/audio")
 def track_audio(tid: str):
     t = q("SELECT * FROM tracks WHERE id=?", (tid,), one=True)
