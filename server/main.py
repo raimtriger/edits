@@ -38,7 +38,9 @@ DEV = os.environ.get("EDITS_DEV") == "1"            # локальные тес�
 FAKE_ASR = os.environ.get("EDITS_FAKE_ASR") == "1"  # тесты без модели распознавания
 MAX_UPLOAD = 80 * 1024 * 1024
 
-for d in (DATA / "tracks", DATA / "edits"):
+IMG_EXT = {".jpg", ".jpeg", ".png", ".webp", ".heic"}
+MAX_COVER = 15 * 1024 * 1024
+for d in (DATA / "tracks", DATA / "edits", DATA / "covers"):
     d.mkdir(parents=True, exist_ok=True)
 FOOTAGE.mkdir(parents=True, exist_ok=True)
 
@@ -59,6 +61,8 @@ with lock:
     CREATE TABLE IF NOT EXISTS edits(id TEXT PRIMARY KEY, user_id INTEGER, track_id TEXT, params TEXT,
         status TEXT, video TEXT, error TEXT, created REAL);
     """)
+    if "cover" not in [r[1] for r in db.execute("PRAGMA table_info(tracks)")]:
+        db.execute("ALTER TABLE tracks ADD COLUMN cover TEXT")  # обложка трека
     db.commit()
 
 
@@ -115,7 +119,9 @@ app = FastAPI(title="LUDUS EDITS")
 def track_json(t: sqlite3.Row) -> dict:
     return {"id": t["id"], "title": t["title"], "status": t["status"], "error": t["error"],
             "duration": t["duration"], "frag_start": t["frag_start"], "frag_end": t["frag_end"],
-            "lines": json.loads(t["lines"]) if t["lines"] else []}
+            "lines": json.loads(t["lines"]) if t["lines"] else [],
+            "cover_url": f"api/tracks/{t['id']}/cover?v={int(Path(t['cover']).stat().st_mtime)}"
+            if t["cover"] and Path(t["cover"]).exists() else None}
 
 
 def edit_json(e: sqlite3.Row) -> dict:
@@ -144,9 +150,25 @@ def tracks(u=Depends(current_user)):
     return [track_json(t) for t in q("SELECT * FROM tracks WHERE user_id=? ORDER BY created DESC", (u["id"],))]
 
 
+async def save_cover(tid: str, cover: UploadFile) -> str:
+    ext = (Path(cover.filename or "c.jpg").suffix or ".jpg").lower()
+    if ext not in IMG_EXT and not (cover.content_type or "").startswith("image/"):
+        raise HTTPException(400, "обложка должна быть картинкой")
+    if ext not in IMG_EXT:
+        ext = ".jpg"
+    for old in (DATA / "covers").glob(f"{tid}.*"):
+        old.unlink(missing_ok=True)
+    path = DATA / "covers" / f"{tid}{ext}"
+    data = await cover.read(MAX_COVER + 1)
+    if len(data) > MAX_COVER:
+        raise HTTPException(413, "обложка больше 15 МБ")
+    path.write_bytes(data)
+    return str(path)
+
+
 @app.post("/api/tracks")
 async def upload_track(audio: UploadFile = File(...), title: str = Form(""), lyrics: str = Form(""),
-                       u=Depends(current_user)):
+                       cover: UploadFile | None = File(None), u=Depends(current_user)):
     tid = uuid.uuid4().hex[:12]
     ext = (Path(audio.filename or "a.mp3").suffix or ".mp3").lower()[:6]
     path = DATA / "tracks" / f"{tid}{ext}"
@@ -162,6 +184,8 @@ async def upload_track(audio: UploadFile = File(...), title: str = Form(""), lyr
     title = title.strip() or Path(audio.filename or "Трек").stem
     q("INSERT INTO tracks(id,user_id,title,audio,lyrics,status,created) VALUES(?,?,?,?,?,?,?)",
       (tid, u["id"], title[:80], str(path), lyrics.strip(), "queued", time.time()))
+    if cover is not None and cover.filename:
+        q("UPDATE tracks SET cover=? WHERE id=?", (await save_cover(tid, cover), tid))
     wake.set()
     return track_json(q("SELECT * FROM tracks WHERE id=?", (tid,), one=True))
 
@@ -172,6 +196,23 @@ def track(tid: str, u=Depends(current_user)):
     if not t:
         raise HTTPException(404)
     return track_json(t)
+
+
+@app.post("/api/tracks/{tid}/cover")
+async def upload_cover(tid: str, cover: UploadFile = File(...), u=Depends(current_user)):
+    t = q("SELECT * FROM tracks WHERE id=? AND user_id=?", (tid, u["id"]), one=True)
+    if not t:
+        raise HTTPException(404)
+    q("UPDATE tracks SET cover=? WHERE id=?", (await save_cover(tid, cover), tid))
+    return track_json(q("SELECT * FROM tracks WHERE id=?", (tid,), one=True))
+
+
+@app.get("/api/tracks/{tid}/cover")
+def track_cover(tid: str):
+    t = q("SELECT cover FROM tracks WHERE id=?", (tid,), one=True)
+    if not t or not t["cover"] or not Path(t["cover"]).exists():
+        raise HTTPException(404)
+    return FileResponse(t["cover"], headers={"Cache-Control": "max-age=86400"})
 
 
 @app.get("/api/tracks/{tid}/audio")

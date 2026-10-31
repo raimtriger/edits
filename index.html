@@ -203,6 +203,12 @@ input[type=range]{accent-color:var(--acc)}
     <div><div class="h2" id="linesTitle">«Неземная»</div><div class="mute" style="font-size:12px">Проверь, вовремя ли загорается строка</div></div></div>
   <div class="wave demo-only" id="wave"></div>
   <div class="mute" id="fragInfo" style="display:none"></div>
+  <div class="card row live-only" style="gap:12px;padding:12px">
+    <span id="lnCoverPrev" style="width:56px;height:56px;border-radius:12px;background:var(--card2) center/cover no-repeat;flex-shrink:0"></span>
+    <span style="flex:1;display:flex;flex-direction:column;gap:2px"><b style="font-size:15px">Обложка</b><span class="mute" id="lnCoverTxt" style="font-size:12px">Нужна для анимаций и сторис</span></span>
+    <label class="chip" for="lnCover" style="background:var(--card2);display:flex;align-items:center">Выбрать</label>
+    <input type="file" id="lnCover" accept="image/*" class="vh">
+  </div>
   <div id="lineList" style="display:flex;flex-direction:column;gap:8px"></div>
   <div class="mute" style="font-size:12px">Жёлтым — припев, нашли сами. Шаг сдвига 0,1 с</div>
   <button class="btn acc" id="linesSave" data-go="home" data-toast="Трек в автопилоте ✓">Всё верно — в автопилот</button>
@@ -294,7 +300,15 @@ input[type=range]{accent-color:var(--acc)}
     <input id="upTitle" placeholder="Например: 30" style="width:100%;background:var(--bg);color:var(--fg);border:1px solid var(--card2);border-radius:12px;padding:12px;font:15px var(--body)">
   </div>
   <div class="card mk">
-    <div class="mkh"><b>3</b>Текст песни <span class="mute" style="font-weight:500">· необязательно</span></div>
+    <div class="mkh"><b>3</b>Обложка <span class="mute" style="font-weight:500">· для анимаций и сторис</span></div>
+    <div class="row" style="gap:12px">
+      <span id="upCoverPrev" style="width:72px;height:72px;border-radius:14px;background:var(--card2) center/cover no-repeat;flex-shrink:0"></span>
+      <label class="btn dark" for="upCover" style="background:var(--card2);flex:1" id="upCoverL">Выбрать картинку</label>
+    </div>
+    <input type="file" id="upCover" accept="image/*" class="vh">
+  </div>
+  <div class="card mk">
+    <div class="mkh"><b>4</b>Текст песни <span class="mute" style="font-weight:500">· необязательно</span></div>
     <textarea id="upLyrics" rows="8" placeholder="Вставь текст — строки встанут точнее. Без текста распознаем сами."></textarea>
   </div>
   <button class="btn acc" id="upSend" style="height:56px;font-size:16px">Загрузить</button>
@@ -863,7 +877,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
   function renderTracks() {
     $('#trackList').innerHTML = tracks.length ? tracks.map(t => {
       const [s, c] = ST[t.status] || ['', ''];
-      return `<button class="track" data-tid="${t.id}"><span class="cover" style="background:#C9C9CD">${esc(t.title.slice(0, 2))}</span>
+      return `<button class="track" data-tid="${t.id}"><span class="cover" style="background:#C9C9CD ${t.cover_url ? `url('${t.cover_url}') center/cover` : ''}">${t.cover_url ? '' : esc(t.title.slice(0, 2))}</span>
         <span style="flex:1;display:flex;flex-direction:column;gap:4px;min-width:0"><b style="font-size:16px;font-weight:600">«${esc(t.title)}»</b>
         <span style="font-size:13px;color:${c}">${t.status === 'error' ? esc(t.error || s) : s}</span></span>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6E6E74" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg></button>`;
@@ -884,6 +898,8 @@ $('#render').onclick = () => renderEdit().catch(err => {
   }
   function renderLiveLines() {
     $('#linesTitle').textContent = '«' + cur.title + '»';
+    $('#lnCoverPrev').style.backgroundImage = cur.cover_url ? `url('${cur.cover_url}')` : '';
+    $('#lnCoverTxt').textContent = cur.cover_url ? 'Загружена ✓' : 'Нужна для анимаций и сторис';
     $('#fragInfo').style.display = 'block';
     $('#fragInfo').textContent = 'Отрывок для эдита: ' + fmt(cur.frag_start) + ' – ' + fmt(cur.frag_end) + '. Тап по строке — послушать.';
     $('#lineList').innerHTML = cur.lines.map((l, i) => `
@@ -901,6 +917,16 @@ $('#render').onclick = () => renderEdit().catch(err => {
     if (i > 0 && cur.lines[i - 1].end > l.start) cur.lines[i - 1].end = l.start;
     renderLiveLines();
   });
+  $('#lnCover').onchange = async e => {
+    const f = e.target.files[0]; if (!f || !cur) return;
+    const fd = new FormData(); fd.append('cover', f);
+    $('#lnCoverTxt').textContent = 'Загружаем…';
+    try { const r = await fetch('api/tracks/' + cur.id + '/cover', { method: 'POST', headers: H, body: fd });
+      if (!r.ok) throw new Error((await r.json()).detail || 'Ошибка ' + r.status);
+      const t = await r.json(); cur.cover_url = t.cover_url; renderLiveLines(); toast('Обложка сохранена ✓'); loadTracks().catch(() => {});
+    } catch (err) { toast(err.message); $('#lnCoverTxt').textContent = 'Не загрузилась'; }
+    e.target.value = '';
+  };
   const saveBtn = $('#linesSave'); saveBtn.removeAttribute('data-go'); saveBtn.removeAttribute('data-toast');
   saveBtn.textContent = 'Сохранить и смонтировать';
   saveBtn.onclick = async () => {
@@ -952,18 +978,22 @@ $('#render').onclick = () => renderEdit().catch(err => {
   }
 
   /* загрузка трека */
+  $('#upCover').onchange = e => { const f = e.target.files[0]; if (!f) return;
+    $('#upCoverPrev').style.backgroundImage = `url('${URL.createObjectURL(f)}')`; $('#upCoverL').textContent = 'Сменить картинку'; };
   $('#upFile').onchange = e => { const f = e.target.files[0]; if (!f) return; $('#upFileL').textContent = f.name;
     if (!$('#upTitle').value) $('#upTitle').value = f.name.replace(/\.[^.]+$/, ''); };
   $('#upSend').onclick = () => {
     const f = $('#upFile').files[0]; if (!f) return toast('Выбери файл трека');
     const fd = new FormData(); fd.append('audio', f); fd.append('title', $('#upTitle').value); fd.append('lyrics', $('#upLyrics').value);
+    const cv = $('#upCover').files[0]; if (cv) fd.append('cover', cv);
     const xhr = new XMLHttpRequest(); xhr.open('POST', 'api/tracks'); for (const k in H) xhr.setRequestHeader(k, H[k]);
     $('#upProg').style.display = 'block'; $('#upSend').disabled = true; $('#upSend').textContent = 'Загружаем…';
     xhr.upload.onprogress = e => { if (e.lengthComputable) $('#upBar').style.width = (e.loaded / e.total * 100) + '%'; };
     const done = () => { $('#upSend').disabled = false; $('#upSend').textContent = 'Загрузить'; $('#upProg').style.display = 'none'; $('#upBar').style.width = 0; };
     xhr.onload = () => { done();
       if (xhr.status === 200) { toast('Загружено! Распознаём текст…'); $('#upFile').value = ''; $('#upFileL').textContent = 'Выбрать mp3 или wav';
-        $('#upTitle').value = ''; $('#upLyrics').value = ''; go('tracks'); }
+        $('#upTitle').value = ''; $('#upLyrics').value = ''; $('#upCover').value = '';
+        $('#upCoverPrev').style.backgroundImage = ''; $('#upCoverL').textContent = 'Выбрать картинку'; go('tracks'); }
       else { let m = 'Ошибка ' + xhr.status; try { m = JSON.parse(xhr.responseText).detail || m; } catch (e) {} toast(m); } };
     xhr.onerror = () => { done(); toast('Сеть отвалилась, попробуй ещё'); };
     xhr.send(fd);
