@@ -1035,8 +1035,33 @@ $('#render').onclick = () => renderEdit().catch(err => {
   });
 
   /* проверка строк */
-  const player = new Audio(); let stopAt = 0;
-  player.addEventListener('timeupdate', () => { if (stopAt && player.currentTime >= stopAt) { player.pause(); stopAt = 0; } });
+  /* один плеер на экран строк: явное состояние, без гонок play()/pause() на iPhone */
+  const player = new Audio(); player.preload = 'auto';
+  let stopAt = 0, playing = false, playReq = null, headRaf = 0;
+  function stopPlayback() {
+    playing = false; stopAt = 0;
+    if (playReq) playReq.then(() => player.pause()).catch(() => {});
+    player.pause();
+    cancelAnimationFrame(headRaf);
+    const b = $('#fragPlay'); if (b) b.textContent = '▶ Послушать';
+    const hd = $('#fragHead'); if (hd) hd.style.display = 'none';
+  }
+  function startPlayback(from, to, showHead) {
+    stopPlayback();
+    playing = true; stopAt = to;
+    try { player.currentTime = from; } catch (e) {}
+    playReq = player.play(); if (playReq) playReq.catch(() => { playing = false; }).finally(() => { playReq = null; });
+    if (showHead) { $('#fragPlay').textContent = '■ Стоп'; $('#fragHead').style.display = 'block'; }
+    const tick = () => {
+      if (!playing) return;
+      if (player.currentTime >= stopAt) { stopPlayback(); return; }
+      if (showHead) $('#fragHead').style.left = (player.currentTime / DUR() * 100) + '%';
+      headRaf = requestAnimationFrame(tick);
+    };
+    headRaf = requestAnimationFrame(tick);
+  }
+  player.addEventListener('ended', stopPlayback);
+  window.__linesPlayer = player;   // для отладки
   function openLines(t) {
     cur = JSON.parse(JSON.stringify(t)); player.src = 'api/tracks/' + t.id + '/audio';
     cur.autoFrag = [t.frag_start, t.frag_end];
@@ -1044,7 +1069,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
   }
 
   /* ---- выбор фрагмента, как в CapCut ---- */
-  let peaks = [], fragPlaying = false;
+  let peaks = [];
   const DUR = () => cur.duration || (peaks.length ? cur.waveDur : 60);
   async function loadWave() {
     $('#fragWave').innerHTML = ''; peaks = [];
@@ -1065,6 +1090,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
     const secPerPx = () => DUR() / box.getBoundingClientRect().width;
     box.addEventListener('pointerdown', ev => {
       if (!cur) return;
+      if (playing) stopPlayback();   // тянешь рамку — звук останавливается
       const h = ev.target.closest('[data-h]'), r = box.getBoundingClientRect();
       const t = (ev.clientX - r.left) * secPerPx();
       mode = h ? h.dataset.h : (t >= cur.frag_start && t <= cur.frag_end ? 'move' : 'jump');
@@ -1084,22 +1110,11 @@ $('#render').onclick = () => renderEdit().catch(err => {
       cur.frag_start = Math.round(cur.frag_start * 10) / 10; cur.frag_end = Math.round(cur.frag_end * 10) / 10;
       drawFrag();
     });
-    const up = () => { if (!mode) return; mode = null; renderLiveLines(); drawFrag(); if (fragPlaying) playFrag(); };
+    const up = () => { if (!mode) return; mode = null; renderLiveLines(); drawFrag(); };
     box.addEventListener('pointerup', up); box.addEventListener('pointercancel', up);
   })();
-  function playFrag() {
-    fragPlaying = true; $('#fragPlay').textContent = '■ Стоп';
-    player.currentTime = cur.frag_start; stopAt = cur.frag_end; player.play();
-    const head = $('#fragHead'); head.style.display = 'block';
-    (function tick() {
-      if (!fragPlaying) { head.style.display = 'none'; return; }
-      head.style.left = (player.currentTime / DUR() * 100) + '%';
-      if (player.paused) { fragPlaying = false; $('#fragPlay').textContent = '▶ Послушать'; head.style.display = 'none'; return; }
-      requestAnimationFrame(tick);
-    })();
-  }
-  $('#fragPlay').onclick = () => { if (fragPlaying) { fragPlaying = false; player.pause(); $('#fragPlay').textContent = '▶ Послушать'; } else playFrag(); };
-  $('#fragAuto').onclick = () => { [cur.frag_start, cur.frag_end] = cur.autoFrag; drawFrag(); renderLiveLines(); toast('Вернули припев'); };
+  $('#fragPlay').onclick = () => { if (playing) stopPlayback(); else startPlayback(cur.frag_start, cur.frag_end, true); };
+  $('#fragAuto').onclick = () => { stopPlayback(); [cur.frag_start, cur.frag_end] = cur.autoFrag; drawFrag(); renderLiveLines(); toast('Вернули припев'); };
   function renderLiveLines() {
     $('#linesTitle').textContent = '«' + cur.title + '»';
     $('#lnCoverPrev').style.backgroundImage = cur.cover_url ? `url('${cur.cover_url}')` : '';
@@ -1113,7 +1128,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
   $('#lineList').addEventListener('click', e => {
     if (!window.LIVE || !cur) return;
     const p = e.target.closest('[data-play]');
-    if (p) { const l = cur.lines[+p.dataset.play]; player.currentTime = Math.max(0, l.start - 0.3); stopAt = l.end; player.play(); return; }
+    if (p) { const l = cur.lines[+p.dataset.play]; startPlayback(Math.max(0, l.start - 0.3), l.end, false); return; }
     const b = e.target.closest('[data-li]'); if (!b) return;
     const i = +b.dataset.li, l = cur.lines[i], d = +b.dataset.d;
     l.start = Math.max(0, Math.round((l.start + d) * 10) / 10);
@@ -1136,7 +1151,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
   saveBtn.onclick = async () => {
     if (!cur) return;
     try { await api('api/tracks/' + cur.id + '/lines', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lines: cur.lines, frag_start: cur.frag_start, frag_end: cur.frag_end }) });
-      selTrack = cur.id; player.pause(); toast('Строки сохранены ✓'); go('studio');
+      selTrack = cur.id; stopPlayback(); toast('Строки сохранены ✓'); go('studio');
     } catch (e) { toast(e.message); }
   };
 
@@ -1273,6 +1288,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
   /* навигация */
   const baseGo = go;
   go = function (s) {
+    if (s !== 'lines') stopPlayback();   // ушли с экрана — звук выключается
     baseGo(s);
     if (s === 'tracks') loadTracks().catch(e => toast(e.message));
     if (s === 'home') { loadTracks().catch(() => {}); loadEdits().catch(() => {}); }
