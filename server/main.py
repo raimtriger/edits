@@ -24,6 +24,7 @@ from .tg import Bot
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("edits")
+logging.getLogger("httpx").setLevel(logging.WARNING)  # не писать токен бота в лог
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = Path(os.environ.get("EDITS_DATA", ROOT / "data"))

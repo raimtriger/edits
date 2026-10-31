@@ -111,6 +111,9 @@ nav button.on{color:var(--fg)} nav button.on i{background:var(--acc)}
 #intro small{position:absolute;bottom:calc(28px + env(safe-area-inset-bottom));left:0;right:0;text-align:center;color:#555;font-size:12px}
 #intro.out{opacity:0;pointer-events:none}
 
+body.live .demo-only{display:none!important}
+.live-only{display:none!important}
+body.live .live-only{display:flex!important}
 .mk{display:flex;flex-direction:column;gap:12px}
 .mkh{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px}
 .mkh b{width:24px;height:24px;border-radius:50%;background:var(--acc);color:#0B0B0C;display:flex;align-items:center;justify-content:center;font-size:12px}
@@ -138,9 +141,10 @@ input[type=range]{accent-color:var(--acc)}
 <section class="screen on" data-s="home">
   <div class="row" style="justify-content:space-between">
     <div style="font-family:var(--display);font-weight:500;font-size:20px;letter-spacing:-.02em">LUDUS<span style="color:var(--acc)"> EDITS</span></div>
-    <div class="pill"><span class="dot"></span>Автопилот · день 12</div>
+    <div class="pill"><span class="dot"></span><span id="homePill">Автопилот · день 12</span></div>
   </div>
-  <div class="mute" style="font-size:14px">Привет! Эдит на сегодня уже готов.</div>
+  <div class="mute" id="homeHello" style="font-size:14px">Привет! Эдит на сегодня уже готов.</div>
+  <div class="live-only" id="liveHome" style="flex-direction:column;gap:14px"></div>
   <div class="edit" id="editBox">
     <canvas id="cv"></canvas>
     <div class="top"><span>«30» · припев</span><span>RAIM TRIGER</span></div>
@@ -148,12 +152,12 @@ input[type=range]{accent-color:var(--acc)}
     <div class="lyr"><div class="cur" id="cur"></div><div class="nxt" id="nxt"></div></div>
     <div class="bar"><b id="bar"></b></div>
   </div>
-  <div class="grid2">
+  <div class="grid2 demo-only">
     <button class="btn acc" data-toast="Подпись и хэштеги скопированы">Выложить</button>
     <button class="btn dark" id="another">Ещё вариант</button>
   </div>
-  <div class="mute" style="text-align:center;font-size:12px;margin-top:-4px">Лучшее время выложить сегодня — 19:30</div>
-  <button class="card row" data-go="pack" style="justify-content:space-between;text-align:left;width:100%">
+  <div class="mute demo-only" style="text-align:center;font-size:12px;margin-top:-4px">Лучшее время выложить сегодня — 19:30</div>
+  <button class="card row demo-only" data-go="pack" style="justify-content:space-between;text-align:left;width:100%">
     <span style="display:flex;flex-direction:column;gap:4px">
       <span class="lbl" style="color:var(--acc)">Релиз через 5 дней</span>
       <span style="font-size:16px;font-weight:600">«Неземная» — собрать пак</span>
@@ -161,7 +165,7 @@ input[type=range]{accent-color:var(--acc)}
     </span>
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#A3A3A8" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
   </button>
-  <button class="card" data-go="fan" style="display:flex;flex-direction:column;gap:6px;text-align:left;width:100%">
+  <button class="card demo-only" data-go="fan" style="display:flex;flex-direction:column;gap:6px;text-align:left;width:100%">
     <span class="lbl">Фан-эдиты</span>
     <span style="font-size:16px;font-weight:600">14 фанатов смонтировали эдит на «30»</span>
     <span class="mute">Их ролики набрали 23 400 просмотров · посмотреть, как это видит фанат →</span>
@@ -197,7 +201,7 @@ input[type=range]{accent-color:var(--acc)}
 <section class="screen" data-s="lines">
   <div class="row"><button class="back" data-go="tracks" aria-label="Назад"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F2F2F0" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg></button>
     <div><div class="h2" id="linesTitle">«Неземная»</div><div class="mute" style="font-size:12px">Проверь, вовремя ли загорается строка</div></div></div>
-  <div class="wave" id="wave"></div>
+  <div class="wave demo-only" id="wave"></div>
   <div class="mute" id="fragInfo" style="display:none"></div>
   <div id="lineList" style="display:flex;flex-direction:column;gap:8px"></div>
   <div class="mute" style="font-size:12px">Жёлтым — припев, нашли сами. Шаг сдвига 0,1 с</div>
@@ -207,7 +211,7 @@ input[type=range]{accent-color:var(--acc)}
 <!-- СТУДИЯ -->
 <section class="screen" data-s="studio">
   <div class="h1">Студия</div>
-  <div class="seg" id="seg"><button class="on" data-t="edits">Эдиты</button><button data-t="stories">Сторис</button><button data-t="youtube">YouTube</button></div>
+  <div class="seg demo-only" id="seg"><button class="on" data-t="edits">Эдиты</button><button data-t="stories">Сторис</button><button data-t="youtube">YouTube</button></div>
   <div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Трек</span>
     <div class="card row" id="studioTrack" style="justify-content:space-between;padding:12px 14px"><span style="font-weight:600">«30» · припев 0:12–0:33</span><span class="mute">сменить</span></div><div id="liveTracks" style="display:none;flex-wrap:wrap;gap:8px"></div></div>
   <div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Футажи</span><div id="foot" style="display:flex;flex-wrap:wrap;gap:8px"></div></div>
@@ -317,19 +321,19 @@ input[type=range]{accent-color:var(--acc)}
 
 <!-- ПРОФИЛЬ -->
 <section class="screen" data-s="profile">
-  <div class="row" style="gap:14px"><span style="width:58px;height:58px;border-radius:50%;background:var(--card2);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-size:18px">RT</span>
-    <div><div style="font-size:18px;font-weight:700">RAIM TRIGER</div><div class="mute">3 трека · 86 эдитов</div></div></div>
+  <div class="row" style="gap:14px"><span style="width:58px;height:58px;border-radius:50%;background:var(--card2);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-size:18px" id="pAva">RT</span>
+    <div><div style="font-size:18px;font-weight:700" id="pName">RAIM TRIGER</div><div class="mute" id="pSub">3 трека · 86 эдитов</div></div></div>
   <button class="card row" data-go="plans" style="justify-content:space-between;text-align:left;width:100%">
-    <span style="display:flex;flex-direction:column;gap:4px"><span class="lbl" style="color:var(--acc)">Доступ «Основатель»</span><span class="mute" style="font-size:14px">Всё открыто · бесплатно</span></span>
+    <span style="display:flex;flex-direction:column;gap:4px"><span class="lbl" style="color:var(--acc)" id="pPlan">Доступ «Основатель»</span><span class="mute" style="font-size:14px" id="pPlanSub">Всё открыто · бесплатно</span></span>
     <span style="font-weight:600;font-size:13px">Сменить</span></button>
-  <div class="card" style="display:flex;flex-direction:column;gap:10px">
+  <div class="card demo-only" style="display:flex;flex-direction:column;gap:10px">
     <span style="font-size:15px;font-weight:700">Ссылка для фанатов</span>
     <span class="mute">Фанаты бесплатно монтируют эдиты на твой трек. В каждом — твоя пресейв-ссылка.</span>
     <div class="row" style="gap:8px"><span style="flex:1;min-width:0;padding:10px 12px;border-radius:10px;background:var(--bg);font-size:13px;color:#C9C9CD;overflow:hidden;white-space:nowrap">t.me/ludusedits_bot?start=raim</span>
       <button class="chip on" style="border-radius:10px;height:40px" data-toast="Ссылка скопирована">Копировать</button></div>
     <button class="mute" data-go="fan" style="text-align:left;font-size:13px;color:var(--acc)">Как это видит фанат →</button>
   </div>
-  <div class="card row" style="justify-content:space-between">
+  <div class="card row demo-only" style="justify-content:space-between">
     <span style="display:flex;flex-direction:column;gap:4px"><span style="font-size:15px;font-weight:700">Позови артиста</span><span class="mute">+7 дней тебе и ему</span></span>
     <button class="chip" style="border-radius:10px;height:40px;background:var(--card2)" data-toast="Приглашение скопировано">Пригласить</button></div>
   <span class="lbl" style="margin-top:4px">Другие проекты автора</span>
@@ -782,6 +786,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
   const initData = (TG && TG.initData) || '';
   if (!ok || (!initData && !dev)) return;
   window.LIVE = true;
+  document.body.classList.add('live');
   const H = initData ? { 'X-Init-Data': initData } : { 'X-Dev-User': dev };
   const api = async (path, opt = {}) => {
     const r = await fetch(path, { ...opt, headers: { ...H, ...(opt.headers || {}) } });
@@ -792,23 +797,66 @@ $('#render').onclick = () => renderEdit().catch(err => {
   navMap.upload = 'tracks';
   $('.upload').dataset.go = 'upload';
 
-  let tracks = [], cur = null, edits = [], selTrack = null, selFoot = 'mix';
+  let tracks = [], cur = null, edits = [], selTrack = null, selFoot = 'mix', me = null;
 
   /* профиль */
-  try {
-    const me = await api('api/me');
-    const nameEl = $('[data-s=profile] .row > div > div');
-    if (nameEl) nameEl.textContent = me.name;
-    $('[data-s=home] .mute').textContent = 'Привет, ' + me.name.split(' ')[0] + '! Загрузи трек — дальше всё сделаем сами.';
-    const plan = $('[data-s=profile] [data-go=plans] .lbl');
-    if (plan && !me.owner) { plan.textContent = 'Бесплатно'; plan.nextElementSibling.textContent = 'Осталось эдитов: ' + me.free_left; }
-  } catch (e) { toast(e.message); return; }
+  async function loadMe() {
+    me = await api('api/me');
+    const first = me.name.split(' ')[0];
+    $('#pName').textContent = me.name;
+    $('#pAva').textContent = me.name.split(' ').map(w => w[0] || '').join('').slice(0, 2).toUpperCase();
+    $('#pPlan').textContent = me.owner ? 'Доступ «Основатель»' : 'Бесплатный доступ';
+    $('#pPlanSub').textContent = me.owner ? 'Безлимит · бесплатно' : 'Осталось эдитов: ' + me.free_left;
+    $('#homePill').textContent = me.owner ? 'Основатель · безлимит' : 'Бесплатно · осталось ' + me.free_left;
+    $('#homeHello').textContent = 'Привет, ' + first + '!';
+  }
+  try { await loadMe(); } catch (e) { toast(e.message); return; }
+  $('#hint').textContent = 'Отрывок — припев, его нашли сами. Монтаж занимает 2–4 минуты, готовое видео придёт в бот.';
+  $('#mount').textContent = 'Смонтировать';
+  $('#pay').onclick = () => toast('Оплата появится позже — сейчас всё бесплатно');
+
+  /* главная */
+  function renderHome() {
+    const done = edits.find(e => e.status === 'done');
+    const busy = edits.find(e => e.status === 'queued' || e.status === 'rendering');
+    const proc = tracks.find(t => t.status === 'queued' || t.status === 'processing');
+    const ready = tracks.filter(t => t.status === 'ready');
+    $('#editBox').style.display = done ? 'none' : 'block';
+    const parts = [];
+    if (busy) {
+      const t = tracks.find(x => x.id === busy.track_id);
+      parts.push(`<div class="card row" style="gap:12px"><span class="step run" style="width:auto"><i></i></span><span style="display:flex;flex-direction:column;gap:2px"><b style="font-size:15px">Монтируем «${esc(t ? t.title : '')}»</b><span class="mute">2–4 минуты · видео придёт в бот</span></span></div>`);
+    }
+    if (done) {
+      const t = tracks.find(x => x.id === done.track_id);
+      parts.push(`<div style="display:flex;flex-direction:column;gap:10px"><span class="lbl">Последний эдит${t ? ' · «' + esc(t.title) + '»' : ''}</span>
+        <video src="${done.url}" controls playsinline preload="metadata" style="width:100%;border-radius:22px;aspect-ratio:9/16;max-height:62vh;background:#000"></video>
+        <div class="grid2"><button class="btn acc" id="hAgain">Ещё вариант</button><button class="btn dark" data-go="upload">Новый трек</button></div>
+        <div class="mute" style="text-align:center;font-size:12px">Видео уже в чате с ботом — оттуда удобно переслать или сохранить</div></div>`);
+    } else if (proc) {
+      parts.push(`<div class="card" style="display:flex;flex-direction:column;gap:6px"><b style="font-size:16px">«${esc(proc.title)}» обрабатывается</b><span class="mute">Распознаём текст и ищем припев · 2–5 минут. Напишем в бот, когда будет готово.</span></div>`);
+    } else if (ready.length) {
+      parts.push(`<button class="card" data-go="studio" style="display:flex;flex-direction:column;gap:6px;text-align:left;width:100%"><span class="lbl" style="color:var(--acc)">Трек готов</span><b style="font-size:16px">Смонтируй первый эдит на «${esc(ready[0].title)}» →</b></button>`);
+    } else {
+      parts.push(`<div class="card" style="display:flex;flex-direction:column;gap:10px"><b style="font-size:17px">Загрузи первый трек</b>
+        <span class="mute">Трек целиком, mp3 или wav. Текст распознаем, припев найдём и смонтируем эдит. Выше — пример, как это выглядит.</span>
+        <button class="btn acc" data-go="upload">Загрузить трек</button></div>`);
+    }
+    $('#liveHome').innerHTML = parts.join('');
+    const again = $('#hAgain');
+    if (again) again.onclick = async () => {
+      try { await api('api/edits', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ track_id: done.track_id, mode: done.params.mode, bw: done.params.bw, footage: done.params.footage }) });
+        toast('Монтируем новый вариант — придёт в бот'); loadEdits(); loadMe().catch(() => {}); } catch (e) { toast(e.message); }
+    };
+    $('#pSub').textContent = tracks.length + ' ' + plural(tracks.length, 'трек', 'трека', 'треков') + ' · ' + edits.filter(e => e.status === 'done').length + ' эдитов';
+  }
+  const plural = (n, a, b, c) => { const m = n % 10, k = n % 100; return m === 1 && k !== 11 ? a : m >= 2 && m <= 4 && (k < 10 || k >= 20) ? b : c; };
 
   /* треки */
   const ST = { queued: ['В очереди…', 'var(--mute)'], processing: ['Распознаём текст и ищем припев…', 'var(--mute)'],
     ready: ['Готов · проверь строки', 'var(--acc)'], error: ['Ошибка', '#ff6b6b'] };
   async function loadTracks() {
-    tracks = await api('api/tracks'); renderTracks(); renderStudioTracks();
+    tracks = await api('api/tracks'); renderTracks(); renderStudioTracks(); renderHome();
     clearTimeout(loadTracks.t);
     if (tracks.some(t => t.status === 'queued' || t.status === 'processing')) loadTracks.t = setTimeout(() => loadTracks().catch(() => {}), 4000);
   }
@@ -885,11 +933,11 @@ $('#render').onclick = () => renderEdit().catch(err => {
     try {
       await api('api/edits', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ track_id: selTrack, mode, bw: $('#bw').classList.contains('on'), footage: selFoot }) });
-      toast('Монтируем — видео придёт в бот'); loadEdits();
+      toast('Монтируем — видео придёт в бот'); loadEdits(); loadMe().catch(() => {});
     } catch (e) { toast(e.message); }
   };
   async function loadEdits() {
-    edits = await api('api/edits');
+    edits = await api('api/edits'); renderHome();
     const box = $('#liveEdits'); box.style.display = 'flex';
     box.innerHTML = edits.length ? '<span class="lbl" style="margin-top:6px">Мои эдиты</span>' + edits.slice(0, 6).map(e => {
       const t = tracks.find(x => x.id === e.track_id), name = t ? '«' + esc(t.title) + '»' : '';
@@ -926,9 +974,10 @@ $('#render').onclick = () => renderEdit().catch(err => {
   go = function (s) {
     baseGo(s);
     if (s === 'tracks') loadTracks().catch(e => toast(e.message));
+    if (s === 'home') { loadTracks().catch(() => {}); loadEdits().catch(() => {}); }
     if (s === 'studio') { loadTracks().catch(() => {}); loadFoot().catch(() => {}); loadEdits().catch(() => {}); }
   };
-  loadTracks().catch(() => {});
+  loadTracks().then(() => loadEdits()).catch(() => {});
 })();
 </script>
 </body>
