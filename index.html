@@ -228,6 +228,10 @@ input[type=range]{accent-color:var(--acc)}
   <div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Футажи</span><div id="foot" style="display:flex;flex-wrap:wrap;gap:8px"></div></div>
   <div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Текст</span>
     <div class="grid3"><button class="tog on" data-m="line">Строкой</button><button class="tog" data-m="word">По слову</button><button class="tog" id="bw">Ч/Б</button></div></div>
+  <div class="live-only" style="flex-direction:column;gap:8px"><span class="lbl">Шрифт</span>
+    <div id="fontChips" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+    <input type="file" id="fontFile" class="vh">
+  </div>
   <div class="card mute" id="hint"></div>
   <button class="btn acc" id="mount" style="height:56px;font-size:16px">Смонтировать · ~40 с</button>
   <div id="liveEdits" style="display:none;flex-direction:column;gap:10px"></div>
@@ -1072,16 +1076,63 @@ $('#render').onclick = () => renderEdit().catch(err => {
     const mode = ($('[data-m].on') || {}).dataset?.m || 'line';
     try {
       await api('api/edits', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ track_id: selTrack, mode, bw: $('#bw').classList.contains('on'), footage: selFoot }) });
+        body: JSON.stringify({ track_id: selTrack, mode, bw: $('#bw').classList.contains('on'), footage: selFoot, font: selFont }) });
       toast('Монтируем — видео придёт в бот'); loadEdits(); loadMe().catch(() => {});
     } catch (e) { toast(e.message); }
   };
+  /* шрифты */
+  let fonts = [], selFont = 'inter';
+  try { selFont = localStorage.getItem('le_font') || 'inter'; } catch (e) {}
+  const loadedFF = {};
+  const ffName = k => 'LEF_' + k.replace(/[^a-z0-9]/gi, '_');
+  function ensureFace(f) {
+    if (loadedFF[f.key]) return; loadedFF[f.key] = 1;
+    try { const ff = new FontFace(ffName(f.key), `url(${f.url})`); ff.load().then(x => document.fonts.add(x)).catch(() => {}); } catch (e) {}
+  }
+  async function loadFonts() {
+    fonts = await api('api/fonts');
+    if (!fonts.find(f => f.key === selFont)) selFont = 'inter';
+    fonts.forEach(ensureFace);
+    $('#fontChips').innerHTML = fonts.map(f => `<button class="chip ${f.key === selFont ? 'on' : ''}" data-fn="${esc(f.key)}"
+        style="font-family:'${ffName(f.key)}',var(--body);font-size:15px;display:flex;align-items:center;gap:8px">${esc(f.name)}${f.own ? `<span data-fdel="${esc(f.key.slice(2))}" aria-label="Удалить шрифт" style="opacity:.6;font-family:var(--body)">✕</span>` : ''}</button>`).join('')
+      + `<label class="chip" for="fontFile" style="display:flex;align-items:center;border:1.5px dashed #3A3A40;background:transparent">+ Свой шрифт</label>`;
+  }
+  $('#fontChips').onclick = async e => {
+    const del = e.target.closest('[data-fdel]');
+    if (del) {
+      e.stopPropagation();
+      try { await api('api/fonts/' + del.dataset.fdel, { method: 'DELETE' }); toast('Шрифт удалён'); loadFonts(); } catch (err) { toast(err.message); }
+      return;
+    }
+    const b = e.target.closest('[data-fn]'); if (!b) return;
+    selFont = b.dataset.fn; try { localStorage.setItem('le_font', selFont); } catch (err) {}
+    $$('#fontChips [data-fn]').forEach(c => c.classList.toggle('on', c === b));
+  };
+  const askRights = () => new Promise(res => {
+    const msg = 'Шрифт твой или у тебя есть права на его использование?';
+    if (TG && TG.showConfirm && TG.initData) TG.showConfirm(msg, ok => res(ok)); else res(confirm(msg));
+  });
+  $('#fontFile').onchange = async e => {
+    const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+    if (!/\.(ttf|otf)$/i.test(f.name)) return toast('Нужен файл .ttf или .otf');
+    if (!(await askRights())) return;
+    const fd = new FormData(); fd.append('font', f);
+    try {
+      const r = await fetch('api/fonts', { method: 'POST', headers: H, body: fd });
+      const j = await r.json(); if (!r.ok) throw new Error(j.detail || 'Ошибка');
+      selFont = j.key; try { localStorage.setItem('le_font', selFont); } catch (err) {}
+      toast(j.cyrillic ? 'Шрифт «' + j.name + '» добавлен ✓' : 'Добавлен, но в нём нет кириллицы — русский текст будет другим шрифтом');
+      loadFonts();
+    } catch (err) { toast(err.message); }
+  };
+
   async function loadEdits() {
     edits = await api('api/edits'); renderHome();
     const box = $('#liveEdits'); box.style.display = 'flex';
     box.innerHTML = edits.length ? '<span class="lbl" style="margin-top:6px">Мои эдиты</span>' + edits.slice(0, 6).map(e => {
       const t = tracks.find(x => x.id === e.track_id), name = t ? '«' + esc(t.title) + '»' : '';
-      const meta = (e.params.mode === 'word' ? 'по слову' : 'строкой') + (e.params.bw ? ' · ч/б' : '');
+      const fn = (fonts.find(f => f.key === e.params.font) || {}).name;
+      const meta = (e.params.mode === 'word' ? 'по слову' : 'строкой') + (e.params.bw ? ' · ч/б' : '') + (fn ? ' · ' + esc(fn) : '');
       if (e.status === 'done') return `<div class="card" style="padding:10px;display:flex;flex-direction:column;gap:8px">
         <video src="${e.url}" controls playsinline preload="metadata" style="width:100%;border-radius:12px;aspect-ratio:9/16;max-height:60vh;background:#000"></video>
         <span class="mute">${name} · ${meta} · уже в боте</span></div>`;
@@ -1119,7 +1170,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
     baseGo(s);
     if (s === 'tracks') loadTracks().catch(e => toast(e.message));
     if (s === 'home') { loadTracks().catch(() => {}); loadEdits().catch(() => {}); }
-    if (s === 'studio') { loadTracks().catch(() => {}); loadFoot().catch(() => {}); loadEdits().catch(() => {}); }
+    if (s === 'studio') { loadTracks().catch(() => {}); loadFoot().catch(() => {}); loadEdits().catch(() => {}); loadFonts().catch(() => {}); }
   };
   loadTracks().then(() => loadEdits()).catch(() => {});
 })();

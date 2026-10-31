@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import tempfile
 import os
 import random
 import sqlite3
@@ -38,9 +39,16 @@ DEV = os.environ.get("EDITS_DEV") == "1"            # локальные тес�
 FAKE_ASR = os.environ.get("EDITS_FAKE_ASR") == "1"  # тесты без модели распознавания
 MAX_UPLOAD = 80 * 1024 * 1024
 
+FONTS_DIR = ROOT / "fonts"
+# ключ: (семейство в файле, множитель размера, подпись)
+FONTS = {"inter": ("LE Inter", 1.0, "Inter Light"), "unbounded": ("LE Unbounded", 0.78, "Unbounded"),
+         "cormorant": ("LE Cormorant", 1.22, "Cormorant"), "oswald": ("LE Oswald", 1.08, "Oswald"),
+         "caveat": ("LE Caveat", 1.3, "Caveat"), "tenor": ("LE Tenor", 0.95, "Tenor Sans")}
+FONT_EXT = {".ttf", ".otf"}
+MAX_FONT = 8 * 1024 * 1024
 IMG_EXT = {".jpg", ".jpeg", ".png", ".webp", ".heic"}
 MAX_COVER = 15 * 1024 * 1024
-for d in (DATA / "tracks", DATA / "edits", DATA / "covers"):
+for d in (DATA / "tracks", DATA / "edits", DATA / "covers", DATA / "fonts"):
     d.mkdir(parents=True, exist_ok=True)
 FOOTAGE.mkdir(parents=True, exist_ok=True)
 
@@ -58,6 +66,7 @@ with lock:
         is_owner INTEGER DEFAULT 0, free_left INTEGER, created REAL);
     CREATE TABLE IF NOT EXISTS tracks(id TEXT PRIMARY KEY, user_id INTEGER, title TEXT, audio TEXT, lyrics TEXT,
         lines TEXT, frag_start REAL, frag_end REAL, duration REAL, status TEXT, error TEXT, created REAL);
+    CREATE TABLE IF NOT EXISTS fonts(id TEXT PRIMARY KEY, user_id INTEGER, family TEXT, path TEXT, created REAL);
     CREATE TABLE IF NOT EXISTS edits(id TEXT PRIMARY KEY, user_id INTEGER, track_id TEXT, params TEXT,
         status TEXT, video TEXT, error TEXT, created REAL);
     """)
@@ -143,6 +152,73 @@ def footage_list(u=Depends(current_user)):
         if n:
             out.append({"key": key, "name": name, "count": n})
     return out
+
+
+def user_font(u_id: int, key: str):
+    if not key.startswith("u:"):
+        return None
+    return q("SELECT * FROM fonts WHERE id=? AND user_id=?", (key[2:], u_id), one=True)
+
+
+@app.get("/api/fonts")
+def fonts(u=Depends(current_user)):
+    out = [{"key": k, "name": v[2], "url": f"fonts/{k}.ttf", "own": False} for k, v in FONTS.items()]
+    out += [{"key": "u:" + f["id"], "name": f["family"], "url": f"api/fonts/{f['id']}/file", "own": True}
+            for f in q("SELECT * FROM fonts WHERE user_id=? ORDER BY created", (u["id"],))]
+    return out
+
+
+@app.post("/api/fonts")
+async def upload_font(font: UploadFile = File(...), u=Depends(current_user)):
+    ext = (Path(font.filename or "f.ttf").suffix or "").lower()
+    if ext not in FONT_EXT:
+        raise HTTPException(400, "нужен файл .ttf или .otf")
+    data = await font.read(MAX_FONT + 1)
+    if len(data) > MAX_FONT:
+        raise HTTPException(413, "шрифт больше 8 МБ")
+    try:
+        import io
+        from fontTools.ttLib import TTFont
+        tt = TTFont(io.BytesIO(data))
+        nm = tt["name"]
+        family = (nm.getDebugName(16) or nm.getDebugName(1) or "").strip()
+        has_cyr = any(0x0410 <= cp <= 0x044F for cp in tt.getBestCmap() or {})
+    except Exception:
+        raise HTTPException(400, "файл не похож на шрифт")
+    if not family:
+        raise HTTPException(400, "в шрифте нет названия")
+    old = q("SELECT * FROM fonts WHERE user_id=? AND family=?", (u["id"], family), one=True)
+    fid = old["id"] if old else uuid.uuid4().hex[:12]
+    path = DATA / "fonts" / f"{fid}{ext}"
+    path.write_bytes(data)
+    if not old:
+        q("INSERT INTO fonts(id,user_id,family,path,created) VALUES(?,?,?,?,?)", (fid, u["id"], family, str(path), time.time()))
+    return {"key": "u:" + fid, "name": family, "url": f"api/fonts/{fid}/file", "own": True, "cyrillic": has_cyr}
+
+
+@app.delete("/api/fonts/{fid}")
+def delete_font(fid: str, u=Depends(current_user)):
+    f = q("SELECT * FROM fonts WHERE id=? AND user_id=?", (fid, u["id"]), one=True)
+    if not f:
+        raise HTTPException(404)
+    Path(f["path"]).unlink(missing_ok=True)
+    q("DELETE FROM fonts WHERE id=?", (fid,))
+    return {"ok": True}
+
+
+@app.get("/api/fonts/{fid}/file")
+def font_file(fid: str):
+    f = q("SELECT path FROM fonts WHERE id=?", (fid,), one=True)
+    if not f or not Path(f["path"]).exists():
+        raise HTTPException(404)
+    return FileResponse(f["path"], media_type="font/ttf", headers={"Cache-Control": "max-age=604800"})
+
+
+@app.get("/fonts/{key}.ttf")
+def bundled_font(key: str):
+    if key not in FONTS:
+        raise HTTPException(404)
+    return FileResponse(FONTS_DIR / f"{key}.ttf", media_type="font/ttf", headers={"Cache-Control": "max-age=604800"})
 
 
 @app.get("/api/tracks")
@@ -245,6 +321,7 @@ class EditIn(BaseModel):
     mode: str = "line"
     bw: bool = False
     footage: str = "mix"
+    font: str = "inter"
 
 
 @app.post("/api/edits")
@@ -257,8 +334,9 @@ def make_edit(body: EditIn, u=Depends(current_user)):
             raise HTTPException(402, "бесплатные эдиты закончились")
         q("UPDATE users SET free_left=free_left-1 WHERE id=?", (u["id"],))
     eid = uuid.uuid4().hex
+    font = body.font if (body.font in FONTS or user_font(u["id"], body.font)) else "inter"
     params = {"mode": body.mode if body.mode in ("line", "word") else "line", "bw": body.bw,
-              "footage": body.footage, "watermark": not u["is_owner"]}
+              "footage": body.footage, "font": font, "watermark": not u["is_owner"]}
     q("INSERT INTO edits(id,user_id,track_id,params,status,created) VALUES(?,?,?,?,?,?)",
       (eid, u["id"], t["id"], json.dumps(params), "queued", time.time()))
     wake.set()
@@ -327,11 +405,28 @@ def process_edit(e: sqlite3.Row):
     fs, fe = t["frag_start"], t["frag_end"]
     frag = [l for l in lines if l.end > fs and l.start < fe]
     out = DATA / "edits" / f"{e['id']}.mp4"
-    st = render.Style(mode=p["mode"], bw=p["bw"], seed=random.randint(1, 10**9),
+    # шрифты для libass: комплект + шрифт артиста, если выбран
+    fkey = p.get("font", "inter")
+    family, scale = FONTS["inter"][0], 1.0
+    tmp_fonts = tempfile.TemporaryDirectory()
+    for k in FONTS:
+        os.symlink(FONTS_DIR / f"{k}.ttf", Path(tmp_fonts.name) / f"{k}.ttf")
+    if fkey in FONTS:
+        family, scale = FONTS[fkey][0], FONTS[fkey][1]
+    else:
+        uf = user_font(e["user_id"], fkey)
+        if uf and Path(uf["path"]).exists():
+            os.symlink(uf["path"], Path(tmp_fonts.name) / ("user" + Path(uf["path"]).suffix))
+            family = uf["family"]
+    st = render.Style(mode=p["mode"], bw=p["bw"], seed=random.randint(1, 10**9), font=family,
+                      font_size=int(72 * scale), fonts_dir=tmp_fonts.name,
                       watermark="LUDUS EDITS" if p.get("watermark") else None)
     t0 = time.time()
-    render.render_edit(render.EditJob(audio=Path(t["audio"]), lines=frag or lines, footage=clips, out=out,
-                                      start=fs, duration=fe - fs, style=st))
+    try:
+        render.render_edit(render.EditJob(audio=Path(t["audio"]), lines=frag or lines, footage=clips, out=out,
+                                          start=fs, duration=fe - fs, style=st))
+    finally:
+        tmp_fonts.cleanup()
     q("UPDATE edits SET status='done', video=? WHERE id=?", (str(out), e["id"]))
     chat = tg_of(e["user_id"])
     if bot and chat:

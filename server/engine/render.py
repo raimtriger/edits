@@ -34,6 +34,7 @@ class Style:
     darken: float = 0.10        # затемнение под текст (0..0.4)
     show_next: bool = True      # показывать следующую строку блекло (режим line)
     watermark: str | None = None  # надпись внизу (бесплатный тариф)
+    fonts_dir: str | None = None  # папка со шрифтами для libass
     seed: int | None = None
 
 
@@ -203,7 +204,11 @@ def render_edit(job: EditJob) -> Path:
             look.append(f"eq=brightness={-st.darken:.2f}:contrast=1.05")
         look.append("vignette=PI/5")
         ass_arg = str(ass_path).replace("\\", "/").replace(":", "\\:")
-        look.append(f"ass='{ass_arg}'")
+        if st.fonts_dir:
+            fd = str(st.fonts_dir).replace("\\", "/").replace(":", "\\:")
+            look.append(f"ass=filename='{ass_arg}':fontsdir='{fd}'")
+        else:
+            look.append(f"ass='{ass_arg}'")
         parts.append(f"{chain}concat=n={len(plan)}:v=1:a=0,{','.join(look)}[vout]")
         a_idx = len(plan)
         parts.append(f"[{a_idx}:a]afade=t=in:d=0.25,afade=t=out:st={max(0, length-0.6):.3f}:d=0.6[aout]")
