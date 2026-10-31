@@ -32,6 +32,9 @@ echo "== nginx stream (роутер по имени)"
 mkdir -p /etc/nginx/stream.d
 cat > /etc/nginx/stream.d/ludus.conf <<EOF
 stream {
+    log_format ludus '\$time_local \$remote_addr sni=\$ssl_preread_server_name -> \$upstream_addr '
+                     'status=\$status sent=\$bytes_sent recv=\$bytes_received time=\$session_time';
+    access_log /var/log/nginx/stream443.log ludus;
     map \$ssl_preread_server_name \$ludus_backend {
         $DOMAIN  127.0.0.1:8444;
         default  127.0.0.1:4443;
