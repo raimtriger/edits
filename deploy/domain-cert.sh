@@ -7,7 +7,7 @@ DOMAIN=${1:-app.ludusedits.ru}
 IP=$(curl -s4 https://api.ipify.org || true)
 
 echo "== DNS"
-got=$(getent hosts "$DOMAIN" | awk '{print $1}' | head -1)
+got=$(getent hosts "$DOMAIN" | awk '{print $1}' | head -1 || true)
 echo "  $DOMAIN -> ${got:-нет}  (сервер: ${IP:-?})"
 [ -n "$got" ] || { echo "DNS ещё не обновился — подожди и запусти снова"; exit 1; }
 
