@@ -5,10 +5,12 @@ Wants=network-online.target
 
 [Service]
 WorkingDirectory=/opt/edits
+# SSL_DOMAIN берётся из /opt/edits/.env (по умолчанию api.duddl.ru)
+Environment=SSL_DOMAIN=api.duddl.ru
 EnvironmentFile=/opt/edits/.env
 ExecStart=/opt/edits/venv/bin/uvicorn server.main:app --host 0.0.0.0 --port 8444 \
-  --ssl-certfile /etc/letsencrypt/live/api.duddl.ru/fullchain.pem \
-  --ssl-keyfile /etc/letsencrypt/live/api.duddl.ru/privkey.pem
+  --ssl-certfile /etc/letsencrypt/live/${SSL_DOMAIN}/fullchain.pem \
+  --ssl-keyfile /etc/letsencrypt/live/${SSL_DOMAIN}/privkey.pem
 Restart=always
 RestartSec=5
 # низкий приоритет: монтаж не должен тормозить ботов и рилсы
