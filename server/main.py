@@ -360,6 +360,8 @@ class EditIn(BaseModel):
     bw: bool = False
     footage: str = "mix"
     font: str = "inter"
+    kind: str = "edit"        # edit — эдит на футажах, cover — анимация обложки
+    caption: str = "ПРЕМЬЕРА"  # надпись для анимации обложки
 
 
 @app.post("/api/edits")
@@ -367,6 +369,8 @@ def make_edit(body: EditIn, u=Depends(current_user)):
     t = q("SELECT * FROM tracks WHERE id=? AND user_id=?", (body.track_id, u["id"]), one=True)
     if not t or t["status"] != "ready":
         raise HTTPException(400, "трек ещё не готов")
+    if body.kind == "cover" and not (t["cover"] and Path(t["cover"]).exists()):
+        raise HTTPException(400, "сначала добавь обложку трека")
     if not u["is_owner"]:
         if u["free_left"] <= 0:
             raise HTTPException(402, "бесплатные эдиты закончились")
@@ -374,7 +378,8 @@ def make_edit(body: EditIn, u=Depends(current_user)):
     eid = uuid.uuid4().hex
     font = body.font if (body.font in FONTS or user_font(u["id"], body.font)) else "inter"
     params = {"mode": body.mode if body.mode in ("line", "word") else "line", "bw": body.bw,
-              "footage": body.footage, "font": font, "watermark": not u["is_owner"]}
+              "footage": body.footage, "font": font, "watermark": not u["is_owner"],
+              "kind": "cover" if body.kind == "cover" else "edit", "caption": body.caption.strip().upper()[:24]}
     q("INSERT INTO edits(id,user_id,track_id,params,status,created) VALUES(?,?,?,?,?,?)",
       (eid, u["id"], t["id"], json.dumps(params), "queued", time.time()))
     wake.set()
@@ -431,10 +436,31 @@ def process_track(t: sqlite3.Row):
                                f"Проверь строки в аппке и жми «Смонтировать».", with_app_button=True)
 
 
+def process_cover(e: sqlite3.Row, t: sqlite3.Row, p: dict):
+    from .engine.cover_anim import render_cover_anim
+    fkey = p.get("font", "inter")
+    font_path = None                     # по умолчанию — широкий жирный Unbounded
+    if fkey.startswith("u:"):
+        uf = user_font(e["user_id"], fkey)
+        font_path = uf["path"] if uf else None
+    elif fkey in FONTS and fkey not in ("inter",):
+        font_path = str(FONTS_DIR / f"{fkey}.ttf")
+    out = DATA / "edits" / f"{e['id']}.mp4"
+    t0 = time.time()
+    render_cover_anim(t["cover"], t["audio"], str(out), t["frag_start"], t["frag_end"] - t["frag_start"],
+                      title=p.get("caption", "ПРЕМЬЕРА"), font_path=font_path)
+    q("UPDATE edits SET status='done', video=? WHERE id=?", (str(out), e["id"]))
+    chat = tg_of(e["user_id"])
+    if bot and chat:
+        bot.send_video(chat, str(out), caption=f"Анимация обложки «{t['title']}» · монтаж {time.time() - t0:.0f} с")
+
+
 def process_edit(e: sqlite3.Row):
     q("UPDATE edits SET status='rendering' WHERE id=?", (e["id"],))
     t = q("SELECT * FROM tracks WHERE id=?", (e["track_id"],), one=True)
     p = json.loads(e["params"])
+    if p.get("kind") == "cover":
+        return process_cover(e, t, p)
     folder = FOOTAGE / p["footage"] if p["footage"] != "mix" else FOOTAGE
     clips = render.list_footage(folder) or render.list_footage(FOOTAGE)
     if not clips:
@@ -499,7 +525,8 @@ def worker():
 def _startup():
     # задачи, прерванные перезапуском, — обратно в очередь
     q("UPDATE tracks SET status='queued' WHERE status='processing'")
-    q("UPDATE edits SET status='queued' WHERE status='rendering'")
+    # монтаж, прерванный перезапуском (например, не хватило памяти), не повторяем по кругу
+    q("UPDATE edits SET status='error', error='прервано — попробуй ещё раз' WHERE status='rendering'")
     threading.Thread(target=worker, daemon=True, name="worker").start()
     if bot:
         bot.setup_menu_button()

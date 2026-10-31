@@ -244,12 +244,16 @@ input[type=range]{accent-color:var(--acc)}
 <!-- СТУДИЯ -->
 <section class="screen" data-s="studio">
   <div class="h1">Студия</div>
+  <div class="seg live-only" id="kindSeg" style="grid-template-columns:1fr 1fr"><button class="on" data-k="edit">Эдит</button><button data-k="cover">Анимация обложки</button></div>
   <div class="seg demo-only" id="seg"><button class="on" data-t="edits">Эдиты</button><button data-t="stories">Сторис</button><button data-t="youtube">YouTube</button></div>
   <div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Трек</span>
     <div class="card row" id="studioTrack" style="justify-content:space-between;padding:12px 14px"><span style="font-weight:600">«30» · припев 0:12–0:33</span><span class="mute">сменить</span></div><div id="liveTracks" style="display:none;flex-wrap:wrap;gap:8px"></div></div>
   <div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Футажи</span><div id="foot" style="display:flex;flex-wrap:wrap;gap:8px"></div></div>
   <div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Текст</span>
     <div class="grid3"><button class="tog on" data-m="line">Строкой</button><button class="tog" data-m="word">По слову</button><button class="tog" id="bw">Ч/Б</button></div></div>
+  <div class="live-only" id="captionBox" style="flex-direction:column;gap:8px;display:none!important"><span class="lbl">Надпись</span>
+    <input id="caption" value="ПРЕМЬЕРА" maxlength="24" style="width:100%;background:var(--bg);color:var(--fg);border:1px solid var(--card2);border-radius:12px;padding:12px;font:600 15px var(--body);text-transform:uppercase">
+  </div>
   <div class="live-only" style="flex-direction:column;gap:8px"><span class="lbl">Шрифт</span>
     <div id="fontChips" style="display:flex;flex-wrap:wrap;gap:8px"></div>
     <input type="file" id="fontFile" class="vh">
@@ -1157,10 +1161,25 @@ $('#render').onclick = () => renderEdit().catch(err => {
     const mode = ($('[data-m].on') || {}).dataset?.m || 'line';
     try {
       await api('api/edits', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ track_id: selTrack, mode, bw: $('#bw').classList.contains('on'), footage: selFoot, font: selFont }) });
+        body: JSON.stringify({ track_id: selTrack, mode, bw: $('#bw').classList.contains('on'), footage: selFoot, font: selFont,
+          kind: selKind, caption: $('#caption').value.toUpperCase() }) });
       toast('Монтируем — видео придёт в бот'); loadEdits(); loadMe().catch(() => {});
     } catch (e) { toast(e.message); }
   };
+  /* режим: эдит или анимация обложки */
+  let selKind = 'edit';
+  const footBlock = $('#foot').parentElement, modeBlock = $('[data-m]').closest('.grid3').parentElement;
+  function paintKind() {
+    $$('#kindSeg button').forEach(b => b.classList.toggle('on', b.dataset.k === selKind));
+    const cov = selKind === 'cover';
+    footBlock.style.display = cov ? 'none' : ''; modeBlock.style.display = cov ? 'none' : '';
+    $('#captionBox').style.setProperty('display', cov ? 'flex' : 'none', 'important');
+    $('#hint').textContent = cov
+      ? 'Обложка трека оживает под выбранный фрагмент: 3D-движение, пульс под бит, надпись по буквам. Монтаж 4–6 минут, видео придёт в бот.'
+      : 'Отрывок — припев, его нашли сами. Монтаж занимает 2–4 минуты, готовое видео придёт в бот.';
+  }
+  $('#kindSeg').onclick = e => { const b = e.target.closest('[data-k]'); if (!b) return; selKind = b.dataset.k; paintKind(); };
+
   /* шрифты */
   let fonts = [], selFont = 'inter';
   try { selFont = localStorage.getItem('le_font') || 'inter'; } catch (e) {}
@@ -1213,7 +1232,8 @@ $('#render').onclick = () => renderEdit().catch(err => {
     box.innerHTML = edits.length ? '<span class="lbl" style="margin-top:6px">Мои эдиты</span>' + edits.slice(0, 6).map(e => {
       const t = tracks.find(x => x.id === e.track_id), name = t ? '«' + esc(t.title) + '»' : '';
       const fn = (fonts.find(f => f.key === e.params.font) || {}).name;
-      const meta = (e.params.mode === 'word' ? 'по слову' : 'строкой') + (e.params.bw ? ' · ч/б' : '') + (fn ? ' · ' + esc(fn) : '');
+      const meta = e.params.kind === 'cover' ? 'анимация обложки' + (e.params.caption ? ' · ' + esc(e.params.caption) : '')
+        : (e.params.mode === 'word' ? 'по слову' : 'строкой') + (e.params.bw ? ' · ч/б' : '') + (fn ? ' · ' + esc(fn) : '');
       if (e.status === 'done') return `<div class="card" style="padding:10px;display:flex;flex-direction:column;gap:8px">
         <video src="${e.url}" controls playsinline preload="metadata" style="width:100%;border-radius:12px;aspect-ratio:9/16;max-height:60vh;background:#000"></video>
         <span class="mute">${name} · ${meta} · уже в боте</span></div>`;
