@@ -431,10 +431,15 @@ def process_track(t: sqlite3.Row):
     lines = align.align_lines(lyr, words, dur) if lyr else align.lines_from_segments(segs)
     if not lines:
         raise RuntimeError("не удалось распознать текст — добавь текст вручную")
-    a, b = align.find_chorus(lines)
-    for i, l in enumerate(lines):
-        l["chorus"] = a <= i <= b
-    fs, fe = align.pick_fragment(lines)
+    ch = align.find_chorus_words(words, dur)
+    if ch:   # припев по словам — точнее, работает и без текста артиста
+        align.mark_chorus_by_time(lines, *ch)
+        fs, fe = align.pick_fragment_from(lines, ch[0])
+    else:
+        a, b = align.find_chorus(lines)
+        for i, l in enumerate(lines):
+            l["chorus"] = a <= i <= b
+        fs, fe = align.pick_fragment(lines)
     q("UPDATE tracks SET lines=?, frag_start=?, frag_end=?, duration=?, status='ready' WHERE id=?",
       (json.dumps(lines, ensure_ascii=False), fs, fe, dur, t["id"]))
     chat = tg_of(t["user_id"])

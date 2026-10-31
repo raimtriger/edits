@@ -126,7 +126,7 @@ body.live #kindSeg{display:grid!important;grid-template-columns:1fr 1fr}
 #fragSel .fh{position:absolute;top:-2px;bottom:-2px;width:16px;background:var(--acc);display:flex;align-items:center;justify-content:center}
 #fragSel .fh::after{content:"";width:2px;height:22px;border-radius:1px;background:#0B0B0C}
 #fragSel .fh.l{left:-2px;border-radius:9px 0 0 9px} #fragSel .fh.r{right:-2px;border-radius:0 9px 9px 0}
-#fragHead{position:absolute;top:4px;bottom:4px;width:2px;background:#fff;border-radius:1px;display:none;pointer-events:none}
+#fragHead{position:absolute;top:6px;bottom:6px;width:2px;margin-left:-1px;background:#fff;border-radius:1px;display:none;pointer-events:none;box-shadow:0 0 6px rgba(255,255,255,.6)}
 .mkh{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px}
 .mkh b{width:24px;height:24px;border-radius:50%;background:var(--acc);color:#0B0B0C;display:flex;align-items:center;justify-content:center;font-size:12px}
 .vh{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
@@ -222,8 +222,7 @@ input[type=range]{accent-color:var(--acc)}
     <div class="row" style="justify-content:space-between"><b style="font-size:15px">Фрагмент для эдита</b><span class="mute" id="fragLbl" style="font-variant-numeric:tabular-nums"></span></div>
     <div id="fragBox" aria-label="Выбор фрагмента: тяни края или рамку">
       <div id="fragWave"></div>
-      <div id="fragSel"><span class="fh l" data-h="l"></span><span class="fh r" data-h="r"></span></div>
-      <div id="fragHead"></div>
+      <div id="fragSel"><div id="fragHead"></div><span class="fh l" data-h="l"></span><span class="fh r" data-h="r"></span></div>
     </div>
     <div class="row" style="gap:8px">
       <button class="chip" id="fragPlay" style="background:var(--card2)">▶ Послушать</button>
@@ -1057,7 +1056,10 @@ $('#render').onclick = () => renderEdit().catch(err => {
     const tick = () => {
       if (!playing) return;
       if (player.currentTime >= stopAt) { stopPlayback(); return; }
-      if (showHead) $('#fragHead').style.left = (player.currentTime / DUR() * 100) + '%';
+      if (showHead) {   // позиция внутри рамки, между ручками
+        const k = Math.max(0, Math.min(1, (player.currentTime - cur.frag_start) / Math.max(0.1, cur.frag_end - cur.frag_start)));
+        $('#fragHead').style.left = `calc(16px + (100% - 32px) * ${k})`;
+      }
       headRaf = requestAnimationFrame(tick);
     };
     headRaf = requestAnimationFrame(tick);
@@ -1113,7 +1115,12 @@ $('#render').onclick = () => renderEdit().catch(err => {
       cur.frag_start = Math.round(cur.frag_start * 10) / 10; cur.frag_end = Math.round(cur.frag_end * 10) / 10;
       drawFrag();
     });
-    const up = () => { if (!mode) return; mode = null; renderLiveLines(); drawFrag(); };
+    const up = () => {
+      if (!mode) return;
+      const m = mode; mode = null; renderLiveLines(); drawFrag();
+      const from = m === 'r' ? Math.max(cur.frag_start, cur.frag_end - 3) : cur.frag_start;   // правый край — слушаем конец
+      startPlayback(from, cur.frag_end, true);
+    };
     box.addEventListener('pointerup', up); box.addEventListener('pointercancel', up);
   })();
   $('#fragPlay').onclick = () => { if (playing) stopPlayback(); else startPlayback(cur.frag_start, cur.frag_end, true); };
@@ -1175,15 +1182,33 @@ $('#render').onclick = () => renderEdit().catch(err => {
       : '<span class="mute">Библиотека футажей пуста — положи видео на сервер в /opt/edits/footage/</span>';
   }
   $('#foot').onclick = e => { const b = e.target.closest('[data-fk]'); if (!b) return; selFoot = b.dataset.fk; $$('#foot .chip').forEach(c => c.classList.toggle('on', c === b)); };
-  $('#mount').onclick = async () => {
-    if (!selTrack) return toast('Сначала загрузи трек');
+  const mountBtn = $('#mount');
+  const mountMsg = document.createElement('div');
+  mountMsg.className = 'mute'; mountMsg.style.cssText = 'text-align:center;font-size:13px;min-height:18px';
+  mountBtn.after(mountMsg);
+  const mountLabel = () => selKind === 'cover' ? 'Оживить обложку' : 'Смонтировать';
+  mountBtn.onclick = async () => {
+    if (mountBtn.disabled) return;
+    if (!selTrack) { mountMsg.style.color = '#ff6b6b'; mountMsg.textContent = 'Сначала загрузи трек во вкладке «Треки»'; return; }
+    const t = tracks.find(x => x.id === selTrack);
+    if (selKind === 'cover' && t && !t.cover_url) {
+      mountMsg.style.color = '#ff6b6b'; mountMsg.innerHTML = 'У трека нет обложки — <u style="cursor:pointer">добавить</u>';
+      mountMsg.querySelector('u').onclick = () => openLines(t); return;
+    }
     const mode = ($('[data-m].on') || {}).dataset?.m || 'line';
+    mountBtn.disabled = true; mountBtn.style.opacity = .6; mountBtn.textContent = 'Отправляем…'; mountMsg.textContent = '';
     try {
       await api('api/edits', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ track_id: selTrack, mode, bw: $('#bw').classList.contains('on'), footage: selFoot, font: selFont,
           kind: selKind, caption: $('#caption').value.toUpperCase() }) });
-      toast('Монтируем — видео придёт в бот'); loadEdits(); loadMe().catch(() => {});
-    } catch (e) { toast(e.message); }
+      try { TG && TG.HapticFeedback && TG.HapticFeedback.notificationOccurred('success'); } catch (e) {}
+      mountBtn.textContent = '✓ Принято';
+      mountMsg.style.color = 'var(--acc)';
+      mountMsg.textContent = selKind === 'cover' ? 'Оживляем обложку · 5–8 мин · видео придёт в бот' : 'Монтируем · 2–4 мин · видео придёт в бот';
+      loadEdits(); loadMe().catch(() => {});
+      setTimeout(() => $('#liveEdits').scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
+    } catch (e) { mountMsg.style.color = '#ff6b6b'; mountMsg.textContent = e.message; }
+    setTimeout(() => { mountBtn.disabled = false; mountBtn.style.opacity = 1; mountBtn.textContent = mountLabel(); }, 2500);
   };
   /* режим: эдит или анимация обложки */
   let selKind = 'edit';
@@ -1193,6 +1218,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
     const cov = selKind === 'cover';
     footBlock.style.display = cov ? 'none' : ''; modeBlock.style.display = cov ? 'none' : '';
     $('#captionBox').style.setProperty('display', cov ? 'flex' : 'none', 'important');
+    if (!mountBtn.disabled) mountBtn.textContent = cov ? 'Оживить обложку' : 'Смонтировать';
     $('#hint').textContent = cov
       ? 'Обложка трека оживает под выбранный фрагмент: 3D-движение, пульс под бит, надпись по буквам. Монтаж 4–6 минут, видео придёт в бот.'
       : 'Отрывок — припев, его нашли сами. Монтаж занимает 2–4 минуты, готовое видео придёт в бот.';

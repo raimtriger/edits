@@ -149,6 +149,56 @@ def find_chorus(lines: list[dict]) -> tuple[int, int]:
     return (a, min(len(lines) - 1, a + 5))
 
 
+def find_chorus_words(words: list[Word], total: float, min_n: int = 5) -> tuple[float, float] | None:
+    """Припев по словам: самая «весомая» повторяющаяся фраза (длина × повторы), берём ПЕРВОЕ её появление.
+    Работает и без текста артиста — не зависит от того, как распознавание нарезало строки."""
+    keys = [norm(w.text) for w in words]
+    idx = [i for i, k in enumerate(keys) if k]
+    seq = [keys[i] for i in idx]
+    best = None  # (score, first_pos, n)
+    for n in range(min(16, len(seq) // 2), min_n - 1, -1):
+        seen: dict[tuple, list[int]] = {}
+        for i in range(len(seq) - n + 1):
+            seen.setdefault(tuple(seq[i:i + n]), []).append(i)
+        for gram, pos in seen.items():
+            # повторы не должны налезать друг на друга
+            occ = [pos[0]]
+            for p_ in pos[1:]:
+                if p_ - occ[-1] >= n:
+                    occ.append(p_)
+            if len(occ) < 2:
+                continue
+            score = n * min(len(occ), 4)
+            if best is None or score > best[0] or (score == best[0] and occ[0] < best[1]):
+                best = (score, occ[0], n)
+    if not best:
+        return None
+    _, first, n = best
+    # расширяем назад: если перед найденной фразой слова тоже совпадают со вторым повтором — это тоже припев
+    w0, w1 = words[idx[first]], words[idx[first + n - 1]]
+    return (max(0.0, w0.start), min(total, w1.end))
+
+
+def mark_chorus_by_time(lines: list[dict], start: float, end: float) -> None:
+    for l in lines:
+        l["chorus"] = bool(l["end"] > start + 0.05 and l["start"] < end - 0.05)
+
+
+def pick_fragment_from(lines: list[dict], start: float, max_len: float = 28.0, min_len: float = 15.0) -> tuple[float, float]:
+    """Фрагмент от времени start (начало припева) целыми строками."""
+    fs = max(0.0, start - 0.35)
+    fe = start + min_len
+    for l in lines:
+        if l["end"] <= start:
+            continue
+        if l["end"] - fs > max_len:
+            break
+        fe = l["end"]
+        if fe - fs >= min_len and l.get("chorus") is False:
+            break
+    return (round(fs, 2), round(min(fe + 0.4, fs + max_len), 2))
+
+
 def pick_fragment(lines: list[dict], max_len: float = 28.0) -> tuple[float, float]:
     """Отрывок для эдита: от начала припева, целыми строками, не длиннее max_len."""
     a, b = find_chorus(lines)
