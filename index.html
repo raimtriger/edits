@@ -117,6 +117,15 @@ body.live .demo-only{display:none!important}
 .live-only{display:none!important}
 body.live .live-only{display:flex!important}
 .mk{display:flex;flex-direction:column;gap:12px}
+#fragBox{position:relative;height:76px;touch-action:none;user-select:none;-webkit-user-select:none;cursor:grab}
+#fragWave{position:absolute;inset:8px 0;display:flex;align-items:center;gap:1px;overflow:hidden}
+#fragWave i{flex:1 1 0;min-width:0;border-radius:1px;background:#3A3A40}
+#fragWave i.in{background:var(--acc)}
+#fragSel{position:absolute;top:0;bottom:0;border:2px solid var(--acc);border-radius:10px;background:rgba(212,255,58,.08);box-sizing:border-box}
+#fragSel .fh{position:absolute;top:-2px;bottom:-2px;width:16px;background:var(--acc);display:flex;align-items:center;justify-content:center}
+#fragSel .fh::after{content:"";width:2px;height:22px;border-radius:1px;background:#0B0B0C}
+#fragSel .fh.l{left:-2px;border-radius:9px 0 0 9px} #fragSel .fh.r{right:-2px;border-radius:0 9px 9px 0}
+#fragHead{position:absolute;top:4px;bottom:4px;width:2px;background:#fff;border-radius:1px;display:none;pointer-events:none}
 .mkh{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px}
 .mkh b{width:24px;height:24px;border-radius:50%;background:var(--acc);color:#0B0B0C;display:flex;align-items:center;justify-content:center;font-size:12px}
 .vh{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
@@ -208,6 +217,19 @@ input[type=range]{accent-color:var(--acc)}
     <div><div class="h2" id="linesTitle">«Неземная»</div><div class="mute" style="font-size:12px">Проверь, вовремя ли загорается строка</div></div></div>
   <div class="wave demo-only" id="wave"></div>
   <div class="mute" id="fragInfo" style="display:none"></div>
+  <div class="card live-only" style="flex-direction:column;gap:12px;padding:14px">
+    <div class="row" style="justify-content:space-between"><b style="font-size:15px">Фрагмент для эдита</b><span class="mute" id="fragLbl" style="font-variant-numeric:tabular-nums"></span></div>
+    <div id="fragBox" aria-label="Выбор фрагмента: тяни края или рамку">
+      <div id="fragWave"></div>
+      <div id="fragSel"><span class="fh l" data-h="l"></span><span class="fh r" data-h="r"></span></div>
+      <div id="fragHead"></div>
+    </div>
+    <div class="row" style="gap:8px">
+      <button class="chip" id="fragPlay" style="background:var(--card2)">▶ Послушать</button>
+      <button class="chip" id="fragAuto" style="background:var(--card2)">Припев</button>
+      <span class="mute" style="font-size:12px;margin-left:auto">3–60 с</span>
+    </div>
+  </div>
   <div class="card row live-only" style="gap:12px;padding:12px">
     <span id="lnCoverPrev" style="width:56px;height:56px;border-radius:12px;background:var(--card2) center/cover no-repeat;flex-shrink:0"></span>
     <span style="flex:1;display:flex;flex-direction:column;gap:2px"><b style="font-size:15px">Обложка</b><span class="mute" id="lnCoverTxt" style="font-size:12px">Нужна для анимаций и сторис</span></span>
@@ -1012,16 +1034,75 @@ $('#render').onclick = () => renderEdit().catch(err => {
   player.addEventListener('timeupdate', () => { if (stopAt && player.currentTime >= stopAt) { player.pause(); stopAt = 0; } });
   function openLines(t) {
     cur = JSON.parse(JSON.stringify(t)); player.src = 'api/tracks/' + t.id + '/audio';
-    go('lines'); renderLiveLines();
+    cur.autoFrag = [t.frag_start, t.frag_end];
+    go('lines'); renderLiveLines(); loadWave();
   }
+
+  /* ---- выбор фрагмента, как в CapCut ---- */
+  let peaks = [], fragPlaying = false;
+  const DUR = () => cur.duration || (peaks.length ? cur.waveDur : 60);
+  async function loadWave() {
+    $('#fragWave').innerHTML = ''; peaks = [];
+    const n = Math.max(50, Math.min(240, Math.floor($('#fragBox').getBoundingClientRect().width / 3) || 100));
+    try { const w = await api('api/tracks/' + cur.id + '/peaks?n=' + n); peaks = w.peaks; cur.waveDur = w.duration; } catch (e) { return; }
+    $('#fragWave').innerHTML = peaks.map(p => `<i style="height:${Math.max(6, p * 100)}%"></i>`).join('');
+    drawFrag();
+  }
+  function drawFrag() {
+    const d = DUR(), a = cur.frag_start / d, b = cur.frag_end / d;
+    const sel = $('#fragSel'); sel.style.left = (a * 100) + '%'; sel.style.width = ((b - a) * 100) + '%';
+    const bars = $$('#fragWave i'), n = bars.length;
+    bars.forEach((el, i) => el.classList.toggle('in', (i + .5) / n >= a && (i + .5) / n <= b));
+    $('#fragLbl').textContent = fmt(cur.frag_start) + ' – ' + fmt(cur.frag_end) + ' · ' + Math.round(cur.frag_end - cur.frag_start) + ' с';
+  }
+  (function dragFrag() {
+    const box = $('#fragBox'); let mode = null, x0 = 0, s0 = 0, e0 = 0;
+    const secPerPx = () => DUR() / box.getBoundingClientRect().width;
+    box.addEventListener('pointerdown', ev => {
+      if (!cur) return;
+      const h = ev.target.closest('[data-h]'), r = box.getBoundingClientRect();
+      const t = (ev.clientX - r.left) * secPerPx();
+      mode = h ? h.dataset.h : (t >= cur.frag_start && t <= cur.frag_end ? 'move' : 'jump');
+      if (mode === 'jump') {   // тап мимо рамки — переносим рамку туда
+        const len = cur.frag_end - cur.frag_start;
+        cur.frag_start = Math.max(0, Math.min(DUR() - len, t - len / 2)); cur.frag_end = cur.frag_start + len; mode = 'move';
+      }
+      x0 = ev.clientX; s0 = cur.frag_start; e0 = cur.frag_end;
+      box.setPointerCapture(ev.pointerId); drawFrag(); haptic();
+    });
+    box.addEventListener('pointermove', ev => {
+      if (!mode) return;
+      const d = DUR(), dt = (ev.clientX - x0) * secPerPx();
+      if (mode === 'move') { const len = e0 - s0; cur.frag_start = Math.max(0, Math.min(d - len, s0 + dt)); cur.frag_end = cur.frag_start + len; }
+      if (mode === 'l') cur.frag_start = Math.max(0, Math.max(e0 - 60, Math.min(e0 - 3, s0 + dt)));
+      if (mode === 'r') cur.frag_end = Math.min(d, Math.min(s0 + 60, Math.max(s0 + 3, e0 + dt)));
+      cur.frag_start = Math.round(cur.frag_start * 10) / 10; cur.frag_end = Math.round(cur.frag_end * 10) / 10;
+      drawFrag();
+    });
+    const up = () => { if (!mode) return; mode = null; renderLiveLines(); drawFrag(); if (fragPlaying) playFrag(); };
+    box.addEventListener('pointerup', up); box.addEventListener('pointercancel', up);
+  })();
+  function playFrag() {
+    fragPlaying = true; $('#fragPlay').textContent = '■ Стоп';
+    player.currentTime = cur.frag_start; stopAt = cur.frag_end; player.play();
+    const head = $('#fragHead'); head.style.display = 'block';
+    (function tick() {
+      if (!fragPlaying) { head.style.display = 'none'; return; }
+      head.style.left = (player.currentTime / DUR() * 100) + '%';
+      if (player.paused) { fragPlaying = false; $('#fragPlay').textContent = '▶ Послушать'; head.style.display = 'none'; return; }
+      requestAnimationFrame(tick);
+    })();
+  }
+  $('#fragPlay').onclick = () => { if (fragPlaying) { fragPlaying = false; player.pause(); $('#fragPlay').textContent = '▶ Послушать'; } else playFrag(); };
+  $('#fragAuto').onclick = () => { [cur.frag_start, cur.frag_end] = cur.autoFrag; drawFrag(); renderLiveLines(); toast('Вернули припев'); };
   function renderLiveLines() {
     $('#linesTitle').textContent = '«' + cur.title + '»';
     $('#lnCoverPrev').style.backgroundImage = cur.cover_url ? `url('${cur.cover_url}')` : '';
     $('#lnCoverTxt').textContent = cur.cover_url ? 'Загружена ✓' : 'Нужна для анимаций и сторис';
     $('#fragInfo').style.display = 'block';
-    $('#fragInfo').textContent = 'Отрывок для эдита: ' + fmt(cur.frag_start) + ' – ' + fmt(cur.frag_end) + '. Тап по строке — послушать.';
+    $('#fragInfo').textContent = 'Тап по строке — послушать её. Блеклые строки не попадут в эдит.';
     $('#lineList').innerHTML = cur.lines.map((l, i) => `
-      <div class="ln ${l.chorus ? 'ch' : ''}"><span class="t">${fmt(l.start)}</span><span class="x" data-play="${i}" style="cursor:pointer">${esc(l.text)}</span>
+      <div class="ln ${l.chorus ? 'ch' : ''}" style="opacity:${l.end > cur.frag_start && l.start < cur.frag_end ? 1 : .4}"><span class="t">${fmt(l.start)}</span><span class="x" data-play="${i}" style="cursor:pointer">${esc(l.text)}</span>
       <button data-li="${i}" data-d="-0.1" aria-label="Раньше">−</button><button data-li="${i}" data-d="0.1" aria-label="Позже">+</button></div>`).join('');
   }
   $('#lineList').addEventListener('click', e => {
@@ -1049,7 +1130,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
   saveBtn.textContent = 'Сохранить и смонтировать';
   saveBtn.onclick = async () => {
     if (!cur) return;
-    try { await api('api/tracks/' + cur.id + '/lines', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lines: cur.lines }) });
+    try { await api('api/tracks/' + cur.id + '/lines', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lines: cur.lines, frag_start: cur.frag_start, frag_end: cur.frag_end }) });
       selTrack = cur.id; player.pause(); toast('Строки сохранены ✓'); go('studio');
     } catch (e) { toast(e.message); }
   };
@@ -1147,8 +1228,12 @@ $('#render').onclick = () => renderEdit().catch(err => {
     $('#upCoverPrev').style.backgroundImage = `url('${URL.createObjectURL(f)}')`; $('#upCoverL').textContent = 'Сменить картинку'; };
   $('#upFile').onchange = e => { const f = e.target.files[0]; if (!f) return; $('#upFileL').textContent = f.name;
     if (!$('#upTitle').value) $('#upTitle').value = f.name.replace(/\.[^.]+$/, ''); };
-  $('#upSend').onclick = () => {
+  const fileDuration = f => new Promise(res => { const a = new Audio(); a.preload = 'metadata';
+    a.onloadedmetadata = () => { res(a.duration); URL.revokeObjectURL(a.src); }; a.onerror = () => res(0); a.src = URL.createObjectURL(f); });
+  $('#upSend').onclick = async () => {
     const f = $('#upFile').files[0]; if (!f) return toast('Выбери файл трека');
+    const dur = await fileDuration(f);
+    if (dur > 8 * 60) return toast('Трек длиннее 8 минут — загрузи сам трек, не сет');
     const fd = new FormData(); fd.append('audio', f); fd.append('title', $('#upTitle').value); fd.append('lyrics', $('#upLyrics').value);
     const cv = $('#upCover').files[0]; if (cv) fd.append('cover', cv);
     const xhr = new XMLHttpRequest(); xhr.open('POST', 'api/tracks'); for (const k in H) xhr.setRequestHeader(k, H[k]);

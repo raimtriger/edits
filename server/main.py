@@ -38,6 +38,7 @@ FREE_EDITS = int(os.environ.get("FREE_EDITS", "3"))
 DEV = os.environ.get("EDITS_DEV") == "1"            # локальные тесты без Telegram
 FAKE_ASR = os.environ.get("EDITS_FAKE_ASR") == "1"  # тесты без модели распознавания
 MAX_UPLOAD = 80 * 1024 * 1024
+MAX_TRACK_SEC = 8 * 60
 
 FONTS_DIR = ROOT / "fonts"
 # ключ: (семейство в файле, множитель размера, подпись)
@@ -257,9 +258,17 @@ async def upload_track(audio: UploadFile = File(...), title: str = Form(""), lyr
                 path.unlink(missing_ok=True)
                 raise HTTPException(413, "файл больше 80 МБ")
             f.write(chunk)
+    try:
+        dur = render.probe_duration(path)
+    except Exception:
+        path.unlink(missing_ok=True)
+        raise HTTPException(400, "не получилось прочитать аудио — пришли mp3, wav или m4a")
+    if dur > MAX_TRACK_SEC:
+        path.unlink(missing_ok=True)
+        raise HTTPException(400, f"трек длиннее {MAX_TRACK_SEC // 60} минут — загрузи сам трек, не сет")
     title = title.strip() or Path(audio.filename or "Трек").stem
-    q("INSERT INTO tracks(id,user_id,title,audio,lyrics,status,created) VALUES(?,?,?,?,?,?,?)",
-      (tid, u["id"], title[:80], str(path), lyrics.strip(), "queued", time.time()))
+    q("INSERT INTO tracks(id,user_id,title,audio,lyrics,status,duration,created) VALUES(?,?,?,?,?,?,?,?)",
+      (tid, u["id"], title[:80], str(path), lyrics.strip(), "queued", dur, time.time()))
     if cover is not None and cover.filename:
         q("UPDATE tracks SET cover=? WHERE id=?", (await save_cover(tid, cover), tid))
     wake.set()
@@ -291,6 +300,29 @@ def track_cover(tid: str):
     return FileResponse(t["cover"], headers={"Cache-Control": "max-age=86400"})
 
 
+@app.get("/api/tracks/{tid}/peaks")
+def track_peaks(tid: str, n: int = 240, u=Depends(current_user)):
+    """Волна трека для выбора фрагмента: n значений 0..1 (кэшируется рядом с треком)."""
+    t = q("SELECT * FROM tracks WHERE id=? AND user_id=?", (tid, u["id"]), one=True)
+    if not t:
+        raise HTTPException(404)
+    n = max(50, min(600, n))
+    cache = Path(t["audio"]).with_suffix(f".peaks{n}.json")
+    if cache.exists():
+        return json.loads(cache.read_text())
+    import array
+    import subprocess
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-i", t["audio"], "-ac", "1", "-ar", "4000", "-f", "s16le", "-"],
+                         capture_output=True).stdout
+    a = array.array("h"); a.frombytes(raw[: len(raw) // 2 * 2])
+    step = max(1, len(a) // n)
+    peaks = [max((abs(x) for x in a[i:i + step]), default=0) for i in range(0, step * n, step)]
+    top = max(peaks) or 1
+    out = {"duration": len(a) / 4000, "peaks": [round(p / top, 3) for p in peaks]}
+    cache.write_text(json.dumps(out))
+    return out
+
+
 @app.get("/api/tracks/{tid}/audio")
 def track_audio(tid: str):
     t = q("SELECT * FROM tracks WHERE id=?", (tid,), one=True)
@@ -310,9 +342,15 @@ def save_lines(tid: str, body: LinesIn, u=Depends(current_user)):
     t = q("SELECT * FROM tracks WHERE id=? AND user_id=?", (tid, u["id"]), one=True)
     if not t:
         raise HTTPException(404)
-    clean = [{"text": str(l["text"])[:200], "start": float(l["start"]), "end": float(l["end"])} for l in body.lines]
+    clean = [{"text": str(l["text"])[:200], "start": float(l["start"]), "end": float(l["end"]),
+              "chorus": bool(l.get("chorus"))} for l in body.lines]
+    fs, fe = body.frag_start, body.frag_end
+    if fs is not None and fe is not None:   # фрагмент 3–60 с в пределах трека
+        dur = t["duration"] or fe
+        fs = max(0.0, min(float(fs), dur - 3))
+        fe = max(fs + 3, min(float(fe), dur, fs + 60))
     q("UPDATE tracks SET lines=?, frag_start=COALESCE(?,frag_start), frag_end=COALESCE(?,frag_end) WHERE id=?",
-      (json.dumps(clean, ensure_ascii=False), body.frag_start, body.frag_end, tid))
+      (json.dumps(clean, ensure_ascii=False), fs, fe, tid))
     return track_json(q("SELECT * FROM tracks WHERE id=?", (tid,), one=True))
 
 
