@@ -104,10 +104,12 @@ nav button.on{color:var(--fg)} nav button.on i{background:var(--acc)}
 .links a:last-child{border:0}
 
 /* интро */
-#intro{position:fixed;inset:0;background:#000;z-index:50;display:flex;flex-direction:column;justify-content:center;padding:0 32px;gap:18px;transition:opacity .9s ease}
-#intro p{margin:0;font-family:var(--display);font-weight:500;font-size:clamp(26px,8vw,38px);line-height:1.15;letter-spacing:-.02em;opacity:0;transform:translateY(14px);transition:opacity .7s ease,transform .7s ease}
-#intro p.show{opacity:1;transform:none}
-#intro p.acc{color:var(--acc)}
+#intro{position:fixed;inset:0;background:#0B0B0C;z-index:50;transition:opacity .6s ease;overflow:hidden}
+#introSvg{position:absolute;inset:0;width:100%;height:100%;display:block}
+#introPhr{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:0 32px;gap:18px;pointer-events:none}
+#introPhr p{margin:0;font-family:var(--display);font-weight:500;font-size:clamp(26px,8vw,38px);line-height:1.15;letter-spacing:-.02em;opacity:0;transform:translateY(14px);transition:opacity .7s ease,transform .7s ease}
+#introPhr p.show{opacity:1;transform:none}
+#introPhr p.acc{color:var(--acc)}
 #intro small{position:absolute;bottom:calc(28px + env(safe-area-inset-bottom));left:0;right:0;text-align:center;color:#555;font-size:12px}
 #intro.out{opacity:0;pointer-events:none}
 
@@ -128,9 +130,12 @@ input[type=range]{accent-color:var(--acc)}
 
 <!-- ИНТРО -->
 <div id="intro" role="dialog" aria-label="Приветствие">
-  <p>Ты артист?</p>
-  <p>Уже надоело монтировать контент?</p>
-  <p class="acc">Мы готовы помочь!</p>
+  <svg id="introSvg" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"></svg>
+  <div id="introPhr">
+    <p>Ты артист?</p>
+    <p>Уже надоело монтировать контент?</p>
+    <p class="acc">Мы готовы помочь!</p>
+  </div>
   <small>тапни, чтобы пропустить</small>
 </div>
 
@@ -411,14 +416,123 @@ document.addEventListener('click', e => {
 let tt;
 function toast(msg) { const el = $('#toast'); el.textContent = msg; el.classList.add('on'); clearTimeout(tt); tt = setTimeout(() => el.classList.remove('on'), 1800); }
 
-/* ---------- интро ---------- */
+/* ---------- интро: первый вход — знакомство ~10 с, повторный — логотип ~2,4 с ---------- */
 (function intro() {
-  const box = $('#intro'), ps = $$('#intro p');
-  let done = false;
-  const finish = () => { if (done) return; done = true; box.classList.add('out'); setTimeout(() => box.remove(), 950); };
-  [150, 1250, 2350].forEach((d, i) => setTimeout(() => ps[i].classList.add('show'), d));
-  setTimeout(finish, 4200);
+  const GL = {"upm":2048,"xh":1056,"g":{"l":{"d":"M440 1490H96V0H440Z","adv":536,"bb":[96,0,440,1490]},"u":{"d":"M459 -23C618 -23 725 50 795 171V0H1135V1056H791V482C791 338 721 271 612 271C503 271 440 339 440 464V1056H96V392C96 132 230 -23 459 -23Z","adv":1231,"bb":[96,-23,1135,1056]},"d":{"d":"M509 -23C648 -23 758 40 813 163H814V0H1155V1490H810V914H809C742 1026 643 1079 506 1079C238 1079 52 853 52 530C52 196 232 -23 509 -23ZM605 252C479 252 401 356 401 530C401 702 479 805 605 805C735 805 824 697 824 530C824 361 735 252 605 252Z","adv":1251,"bb":[52,-23,1155,1490]},"s":{"d":"M562 -26C858 -26 1058 120 1058 337C1058 494 956 585 739 625L527 664C454 678 413 707 413 751C413 803 465 842 555 842C646 842 712 787 714 713H1031C1025 938 838 1078 543 1078C249 1078 70 944 70 735C70 568 181 461 389 424L580 390C664 375 708 347 708 301C708 248 652 211 557 211C456 211 395 260 385 338H46C65 113 270 -26 562 -26Z","adv":1103,"bb":[46,-26,1058,1078]},"e":{"d":"M596 -24C863 -24 1076 125 1115 338H806C781 268 709 224 608 224C472 224 392 309 388 443H1123V536C1123 856 904 1080 587 1080C274 1080 52 850 52 528C52 206 272 -24 596 -24ZM390 649C405 760 480 826 596 826C711 826 787 760 802 649Z","adv":1171,"bb":[52,-24,1123,1080]},"i":{"d":"M96 0H440V1056H96ZM267 1159C378 1159 457 1232 457 1333C457 1434 378 1506 267 1506C157 1506 78 1434 78 1333C78 1232 157 1159 267 1159Z","adv":536,"bb":[78,0,457,1506]},"t":{"d":"M761 1056H544V1344H199V1056H19V790H199V297C199 92 313 0 566 0H761V266H642C565 266 544 287 544 355V790H761Z","adv":803,"bb":[19,0,761,1344]}," ":{"d":"","adv":409,"bb":[0,0,0,0]}}};
+  const box = $('#intro'), svg = $('#introSvg'), ps = $$('#introPhr p');
+  if (!box) return;
+  let first = true;
+  try { first = !localStorage.getItem('le_seen'); localStorage.setItem('le_seen', '1'); } catch (e) {}
+  if (/[?&]intro=1/.test(location.search)) first = true;
+  if (/[?&]intro=2/.test(location.search)) first = false;
+
+  const NS = 'http://www.w3.org/2000/svg', LIME = '#D4FF3A', U = GL.upm;
+  const W = box.clientWidth || innerWidth, H = box.clientHeight || innerHeight;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  const mk = (tag, attrs) => { const el = document.createElementNS(NS, tag); for (const k in attrs) el.setAttribute(k, attrs[k]); svg.appendChild(el); return el; };
+
+  /* ---- геометрия логотипа (как аватарка №9) ---- */
+  const eb = GL.g.e.bb, lb = GL.g.l.bb;
+  const Fl = Math.min(W * 0.5, H * 0.3, 260), kl = Fl / U;
+  const eW = (eb[2] - eb[0]) * kl, eH = (eb[3] - eb[1]) * kl;
+  const bw = (lb[2] - lb[0]) * kl, overlap = 0.2 * eW;
+  const gx0 = (W - (bw + eW - overlap)) / 2;
+  const cy = H * 0.45;
+  const eOy = cy - eH / 2 + eb[3] * kl;
+  const LOGO = {   // низ палочки — ровно по нижнему краю перекладины «e»
+    bar: { x: gx0, y: -2, w: bw, h: eOy - 443 * kl + 2 },
+    e: { ox: gx0 + bw - overlap - eb[0] * kl, oy: eOy, k: kl }
+  };
+
+  /* ---- геометрия надписи «ludus edits» ---- */
+  const word = 'ludus edits';
+  const advU = [...word].reduce((s, c) => s + GL.g[c].adv, 0);
+  const Fw = Math.min(W * 0.8 * U / advU, H * 0.11), kw = Fw / U;
+  const base = H * 0.5 + GL.xh * kw / 2;
+  let x = (W - advU * kw) / 2;
+  const letters = [...word].map((c, i) => { const o = { c, i, ox: x }; x += GL.g[c].adv * kw; return o; });
+  const WL = letters[0], WE = letters[6];
+  const WORD = {
+    bar: { x: WL.ox + lb[0] * kw, y: base - lb[3] * kw, w: bw / kl * kw, h: (lb[3] - lb[1]) * kw },
+    e: { ox: WE.ox, oy: base, k: kw }
+  };
+
+  /* ---- элементы ---- */
+  const others = letters.filter(l => l.c !== ' ' && l.i !== 0 && l.i !== 6).map(l => ({ ...l,
+    el: mk('path', { d: GL.g[l.c].d, fill: LIME, opacity: 0 }) }));
+  const bar = mk('rect', { fill: LIME, opacity: 0 });
+  const eEl = mk('path', { d: GL.g.e.d, fill: LIME, opacity: 0 });
+  const tag = mk('text', { x: W / 2, y: cy + eH / 2 + 46, 'text-anchor': 'middle', fill: '#8A8A90', opacity: 0,
+    style: "font:600 12px Manrope,system-ui,sans-serif;letter-spacing:.42em" });
+  tag.textContent = 'LUDUS EDITS';
+  svg.setAttribute('shape-rendering', 'geometricPrecision');
+
+  /* ---- математика ---- */
+  const cl = v => Math.max(0, Math.min(1, v));
+  const P = (t, a, d) => cl((t - a) / d);
+  const L = (a, b, p) => a + (b - a) * p;
+  const eo = p => 1 - Math.pow(1 - p, 3);
+  const eio = p => p < .5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+  const bounce = p => { const n = 7.5625, d = 2.75;
+    if (p < 1 / d) return n * p * p; if (p < 2 / d) return n * (p -= 1.5 / d) * p + .75;
+    if (p < 2.5 / d) return n * (p -= 2.25 / d) * p + .9375; return n * (p -= 2.625 / d) * p + .984375; };
+  const setRect = (r, o) => { bar.setAttribute('x', r.x); bar.setAttribute('y', r.y); bar.setAttribute('width', r.w); bar.setAttribute('height', Math.max(0, r.h)); bar.setAttribute('opacity', o); };
+  const setE = (ox, oy, k, ang, o, s = 1) => {
+    const cx = ox + (eb[0] + eb[2]) / 2 * k, cyy = oy - (eb[1] + eb[3]) / 2 * k;
+    eEl.setAttribute('transform', `translate(${cx} ${cyy}) rotate(${ang}) scale(${s}) translate(${-cx} ${-cyy}) translate(${ox} ${oy}) scale(${k} ${-k})`);
+    eEl.setAttribute('opacity', o);
+  };
+  const lerpRect = (a, b, p) => ({ x: L(a.x, b.x, p), y: L(a.y, b.y, p), w: L(a.w, b.w, p), h: L(a.h, b.h, p) });
+
+  /* ---- таймлайны ---- */
+  function firstVisit(t) {
+    [0.3, 1.9, 3.5].forEach((s, i) => ps[i].classList.toggle('show', t >= s && t < 5.3));
+    // надпись собирается по буквам
+    const appear = i => eo(P(t, 6.1 + i * 0.06, 0.5));
+    others.forEach(l => {
+      const a = appear(l.i), gone = P(t, 7.25 + Math.abs(l.i - 3) * 0.03, 0.4);
+      const dy = (1 - a) * 22 + eio(gone) * 26;
+      l.el.setAttribute('transform', `translate(${l.ox} ${base + dy}) scale(${kw} ${-kw})`);
+      l.el.setAttribute('opacity', a * (1 - eo(gone)));
+    });
+    // l -> палочка до верха экрана
+    const aL = appear(0), mL = eio(P(t, 7.45, 0.95));
+    const r = lerpRect(WORD.bar, LOGO.bar, mL);
+    r.y += (1 - aL) * 22;
+    setRect(r, aL);
+    // e -> катится на место логотипа
+    const aE = appear(6), mE = eio(P(t, 7.6, 1.0));
+    const settle = Math.sin(Math.PI * P(t, 8.6, 0.35)) * 0.06;
+    setE(L(WORD.e.ox, LOGO.e.ox, mE), L(WORD.e.oy, LOGO.e.oy, mE) + (1 - aE) * 22, L(WORD.e.k, LOGO.e.k, mE), 360 * mE, aE, 1 + settle);
+    tag.setAttribute('opacity', eo(P(t, 8.8, 0.5)) * 0.9);
+    return t >= 9.7;
+  }
+  function returning(t) {
+    const g = eo(P(t, 0.05, 0.55));
+    setRect({ x: LOGO.bar.x, y: LOGO.bar.y, w: LOGO.bar.w, h: LOGO.bar.h * g }, 1);
+    const p = P(t, 0.4, 1.0);
+    const startOy = LOGO.e.oy - (LOGO.e.oy + eH);   // над экраном
+    setE(LOGO.e.ox, L(startOy, LOGO.e.oy, bounce(p)), kl, 720 * eo(p), p > 0 ? 1 : 0);
+    tag.setAttribute('opacity', eo(P(t, 1.3, 0.4)) * 0.9);
+    return t >= 2.0;
+  }
+
+  /* ---- запуск ---- */
+  const run = first ? firstVisit : returning;
+  if (!first) { $('#introPhr').style.display = 'none'; $('#intro small').style.display = 'none'; }
+  let t0 = null, done = false, raf;
+  function finish() {
+    if (done) return; done = true; cancelAnimationFrame(raf);
+    box.classList.add('out'); setTimeout(() => box.remove(), 650);
+  }
+  function frame(now) {
+    if (t0 === null) t0 = now;
+    if (run((now - t0) / 1000)) return finish();
+    raf = requestAnimationFrame(frame);
+  }
+  raf = requestAnimationFrame(frame);
   box.addEventListener('click', finish);
+  window.__introSeek = t => run(t);   // для проверки кадров
 })();
 
 /* ---------- живой пример эдита ---------- */
