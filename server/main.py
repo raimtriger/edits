@@ -420,6 +420,19 @@ def tg_of(user_id: int) -> int | None:
     return r["tg_id"] if r else None
 
 
+def run_job(cmd: str, args: dict, timeout: int = 1800) -> dict:
+    """Тяжёлая работа — в отдельном процессе с низким приоритетом: сервер аппки не тормозит."""
+    import subprocess
+    import sys
+    p = subprocess.run(["nice", "-n", "15", sys.executable, "-m", "server.engine.job", cmd, json.dumps(args, ensure_ascii=False)],
+                       cwd=str(ROOT), capture_output=True, text=True, timeout=timeout)
+    if p.returncode != 0:
+        tail = (p.stderr or "").strip().splitlines()[-1:] or ["неизвестная ошибка"]
+        log.warning("job %s failed: %s", cmd, (p.stderr or "")[-1500:])
+        raise RuntimeError(tail[0][:200])
+    return json.loads(p.stdout.strip().splitlines()[-1])
+
+
 def process_track(t: sqlite3.Row):
     q("UPDATE tracks SET status='processing' WHERE id=?", (t["id"],))
     dur = render.probe_duration(Path(t["audio"]))
@@ -427,7 +440,9 @@ def process_track(t: sqlite3.Row):
     if FAKE_ASR:
         words, segs = align.fake_transcribe(t["lyrics"] or "ля ля ля", dur)
     else:
-        words, segs = align.transcribe(t["audio"], t["lyrics"])
+        r = run_job("transcribe", {"audio": t["audio"], "lyrics": t["lyrics"]})
+        words = [align.Word(w, s, e) for w, s, e in r["words"]]
+        segs = [tuple(x) for x in r["segs"]]
     lines = align.align_lines(lyr, words, dur) if lyr else align.lines_from_segments(segs)
     if not lines:
         raise RuntimeError("не удалось распознать текст — добавь текст вручную")
@@ -449,7 +464,6 @@ def process_track(t: sqlite3.Row):
 
 
 def process_cover(e: sqlite3.Row, t: sqlite3.Row, p: dict):
-    from .engine.cover_anim import render_cover_anim
     fkey = p.get("font", "inter")
     font_path = None                     # по умолчанию — широкий жирный Unbounded
     if fkey.startswith("u:"):
@@ -459,8 +473,9 @@ def process_cover(e: sqlite3.Row, t: sqlite3.Row, p: dict):
         font_path = str(FONTS_DIR / f"{fkey}.ttf")
     out = DATA / "edits" / f"{e['id']}.mp4"
     t0 = time.time()
-    render_cover_anim(t["cover"], t["audio"], str(out), t["frag_start"], t["frag_end"] - t["frag_start"],
-                      title=p.get("caption", "ПРЕМЬЕРА"), font_path=font_path)
+    run_job("cover", {"cover": t["cover"], "audio": t["audio"], "out": str(out), "start": t["frag_start"],
+                      "dur": t["frag_end"] - t["frag_start"], "title": p.get("caption", "ПРЕМЬЕРА"),
+                      "font_path": font_path}, timeout=3600)
     q("UPDATE edits SET status='done', video=? WHERE id=?", (str(out), e["id"]))
     chat = tg_of(e["user_id"])
     if bot and chat:
