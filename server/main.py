@@ -17,7 +17,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 
 from .engine import align, render
@@ -613,10 +613,37 @@ def _startup():
     # монтаж, прерванный перезапуском (например, не хватило памяти), не повторяем по кругу
     q("UPDATE edits SET status='error', error='прервано — попробуй ещё раз' WHERE status='rendering'")
     threading.Thread(target=worker, daemon=True, name="worker").start()
+    threading.Thread(target=refresh_tgjs, daemon=True, name="tgjs").start()
     if bot:
         bot.setup_menu_button()
         bot.start_polling()
     log.info("LUDUS EDITS started · dev=%s · fake_asr=%s · bot=%s", DEV, FAKE_ASR, bool(bot))
+
+
+# скрипт Telegram Mini Apps отдаём со СВОЕГО адреса: telegram.org из России часто недоступен,
+# и тогда страница висит на загрузке
+TGJS = DATA / "telegram-web-app.js"
+TGJS_URL = "https://telegram.org/js/telegram-web-app.js"
+
+
+def refresh_tgjs():
+    try:
+        if TGJS.exists() and time.time() - TGJS.stat().st_mtime < 86400:
+            return
+        import httpx
+        r = httpx.get(TGJS_URL, timeout=20, follow_redirects=True)
+        if r.status_code == 200 and b"Telegram" in r.content and len(r.content) > 5000:
+            tmp = TGJS.with_suffix(".tmp"); tmp.write_bytes(r.content); tmp.replace(TGJS)
+            log.info("telegram-web-app.js обновлён (%d байт)", len(r.content))
+    except Exception as e:
+        log.warning("не скачал telegram-web-app.js: %s", e)
+
+
+@app.get("/tg.js")
+def tgjs():
+    if TGJS.exists():
+        return FileResponse(TGJS, media_type="application/javascript", headers={"Cache-Control": "max-age=86400"})
+    return RedirectResponse(TGJS_URL)
 
 
 # фронтенд: отдаём ТОЛЬКО index.html (никаких статик-папок — рядом лежат .env и база)
