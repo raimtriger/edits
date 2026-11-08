@@ -443,6 +443,12 @@ document.addEventListener('click', e => { if (e.target.closest('button')) haptic
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
+/* ---------- адрес API ----------
+   На нашем сервере страница и API на одном хосте. На GitHub Pages страница отдаётся отдельно
+   (из России Cloudflare обрезает большие ответы), а API остаётся на сервере в Амстердаме. */
+const API_BASE = ['app.ludusedits.ru', 'api.duddl.ru', 'localhost', '127.0.0.1'].includes(location.hostname) ? '' : 'https://app.ludusedits.ru/';
+const A = p => /^(https?:|blob:|data:)/.test(p) ? p : API_BASE + p;
+
 /* ---------- навигация ---------- */
 const navMap = { lines: 'tracks', process: 'tracks', make: 'studio', pack: 'home', plans: 'profile', fan: 'profile' };
 function go(s) {
@@ -952,16 +958,16 @@ $('#render').onclick = () => renderEdit().catch(err => {
    ========================================================= */
 (async function live() {
   let ok = false;
-  try { const r = await fetch('api/health', { cache: 'no-store' }); ok = r.ok && (await r.json()).ok; } catch (e) {}
+  try { const r = await fetch(A('api/health'), { cache: 'no-store' }); ok = r.ok && (await r.json()).ok; } catch (e) {}
   const dev = new URLSearchParams(location.search).get('dev');
   const initData = (TG && TG.initData) || '';
   if (!ok || (!initData && !dev)) return;
   window.LIVE = true;
-  try { const hv = await (await fetch('api/health', { cache: 'no-store' })).json(); $('#buildLbl').textContent = 'версия ' + hv.build + ' · страница ' + (new URLSearchParams(location.search).get('v') || '—'); } catch (e) {}
+  try { const hv = await (await fetch(A('api/health'), { cache: 'no-store' })).json(); $('#buildLbl').textContent = 'версия ' + hv.build + ' · страница ' + (new URLSearchParams(location.search).get('v') || '—'); } catch (e) {}
   document.body.classList.add('live');
   const H = initData ? { 'X-Init-Data': initData } : { 'X-Dev-User': dev };
   const api = async (path, opt = {}) => {
-    const r = await fetch(path, { ...opt, headers: { ...H, ...(opt.headers || {}) } });
+    const r = await fetch(A(path), { ...opt, headers: { ...H, ...(opt.headers || {}) } });
     if (!r.ok) { let m = 'Ошибка ' + r.status; try { m = (await r.json()).detail || m; } catch (e) {} throw new Error(m); }
     return r.json();
   };
@@ -1002,7 +1008,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
     if (done) {
       const t = tracks.find(x => x.id === done.track_id);
       parts.push(`<div style="display:flex;flex-direction:column;gap:10px"><span class="lbl">Последний эдит${t ? ' · «' + esc(t.title) + '»' : ''}</span>
-        <video src="${done.url}" controls playsinline preload="metadata" style="width:100%;border-radius:22px;aspect-ratio:9/16;max-height:62vh;background:#000"></video>
+        <video src="${A(done.url)}" controls playsinline preload="metadata" style="width:100%;border-radius:22px;aspect-ratio:9/16;max-height:62vh;background:#000"></video>
         <div class="grid2"><button class="btn acc" id="hAgain">Ещё вариант</button><button class="btn dark" data-go="upload">Новый трек</button></div>
         <div class="mute" style="text-align:center;font-size:12px">Видео уже в чате с ботом — оттуда удобно переслать или сохранить</div></div>`);
     } else if (proc) {
@@ -1036,7 +1042,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
   function renderTracks() {
     $('#trackList').innerHTML = tracks.length ? tracks.map(t => {
       const [s, c] = stLabel(t);
-      return `<button class="track" data-tid="${t.id}"><span class="cover" style="background:#C9C9CD ${t.cover_url ? `url('${t.cover_url}') center/cover` : ''}">${t.cover_url ? '' : esc(t.title.slice(0, 2))}</span>
+      return `<button class="track" data-tid="${t.id}"><span class="cover" style="background:#C9C9CD ${t.cover_url ? `url('${A(t.cover_url)}') center/cover` : ''}">${t.cover_url ? '' : esc(t.title.slice(0, 2))}</span>
         <span style="flex:1;display:flex;flex-direction:column;gap:4px;min-width:0"><b style="font-size:16px;font-weight:600">«${esc(t.title)}»</b>
         <span style="font-size:13px;color:${c}">${t.status === 'error' ? esc(t.error || s) + ' · тапни, чтобы удалить' : s}</span></span>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6E6E74" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg></button>`;
@@ -1086,7 +1092,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
   function openLines(t) {
     stopPlayback();
     cur = JSON.parse(JSON.stringify(t));
-    player.src = 'api/tracks/' + t.id + '/audio'; player.load();
+    player.src = A('api/tracks/' + t.id + '/audio'); player.load();
     cur.autoFrag = [t.frag_start, t.frag_end];
     $('#linesMsg').textContent = '';
     go('lines'); renderLiveLines(); drawFrag();
@@ -1135,7 +1141,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
     $('#linesSub').textContent = instr ? 'Композиция без слов — выбери фрагмент' : 'Проверь, вовремя ли загорается строка';
     $('#fragAuto').textContent = instr ? 'Самое яркое' : 'Припев';
     $('#linesNote').style.display = instr || !cur.lines.length ? 'none' : '';
-    $('#lnCoverPrev').style.backgroundImage = cur.cover_url ? `url('${cur.cover_url}')` : '';
+    $('#lnCoverPrev').style.backgroundImage = cur.cover_url ? `url('${A(cur.cover_url)}')` : '';
     $('#lnCoverTxt').textContent = cur.cover_url ? 'Загружена ✓' : 'Нужна для анимаций и сторис';
     $('#fragInfo').style.display = 'block';
     $('#fragInfo').textContent = instr ? 'Текст не нужен: эдит смонтируется без субтитров.'
@@ -1159,7 +1165,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
     const f = e.target.files[0]; if (!f || !cur) return;
     const fd = new FormData(); fd.append('cover', f);
     $('#lnCoverTxt').textContent = 'Загружаем…';
-    try { const r = await fetch('api/tracks/' + cur.id + '/cover', { method: 'POST', headers: H, body: fd });
+    try { const r = await fetch(A('api/tracks/' + cur.id + '/cover'), { method: 'POST', headers: H, body: fd });
       if (!r.ok) throw new Error((await r.json()).detail || 'Ошибка ' + r.status);
       const t = await r.json(); cur.cover_url = t.cover_url; renderLiveLines(); toast('Обложка сохранена ✓'); loadTracks().catch(() => {});
     } catch (err) { toast(err.message); $('#lnCoverTxt').textContent = 'Не загрузилась'; }
@@ -1256,7 +1262,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
   const ffName = k => 'LEF_' + k.replace(/[^a-z0-9]/gi, '_');
   function ensureFace(f) {
     if (loadedFF[f.key]) return; loadedFF[f.key] = 1;
-    try { const ff = new FontFace(ffName(f.key), `url(${f.url})`); ff.load().then(x => document.fonts.add(x)).catch(() => {}); } catch (e) {}
+    try { const ff = new FontFace(ffName(f.key), `url(${f.own ? A(f.url) : f.url})`); ff.load().then(x => document.fonts.add(x)).catch(() => {}); } catch (e) {}
   }
   async function loadFonts() {
     fonts = await api('api/fonts');
@@ -1287,7 +1293,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
     if (!(await askRights())) return;
     const fd = new FormData(); fd.append('font', f);
     try {
-      const r = await fetch('api/fonts', { method: 'POST', headers: H, body: fd });
+      const r = await fetch(A('api/fonts'), { method: 'POST', headers: H, body: fd });
       const j = await r.json(); if (!r.ok) throw new Error(j.detail || 'Ошибка');
       selFont = j.key; try { localStorage.setItem('le_font', selFont); } catch (err) {}
       toast(j.cyrillic ? 'Шрифт «' + j.name + '» добавлен ✓' : 'Добавлен, но в нём нет кириллицы — русский текст будет другим шрифтом');
@@ -1304,7 +1310,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
       const meta = e.params.kind === 'cover' ? 'анимация обложки' + (e.params.caption ? ' · ' + esc(e.params.caption) : '')
         : (e.params.mode === 'word' ? 'по слову' : 'строкой') + (e.params.bw ? ' · ч/б' : '') + (fn ? ' · ' + esc(fn) : '');
       if (e.status === 'done') return `<div class="card" style="padding:10px;display:flex;flex-direction:column;gap:8px">
-        <video src="${e.url}" controls playsinline preload="metadata" style="width:100%;border-radius:12px;aspect-ratio:9/16;max-height:60vh;background:#000"></video>
+        <video src="${A(e.url)}" controls playsinline preload="metadata" style="width:100%;border-radius:12px;aspect-ratio:9/16;max-height:60vh;background:#000"></video>
         <span class="mute">${name} · ${meta} · уже в боте</span></div>`;
       return `<div class="card mute">${name} · ${meta} — ${e.status === 'error' ? 'ошибка: ' + esc(e.error) : e.status === 'rendering' ? 'монтируем…' : 'в очереди…'}</div>`;
     }).join('') : '';
@@ -1333,7 +1339,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
     if (dur > 8 * 60) return toast('Трек длиннее 8 минут — загрузи сам трек, не сет');
     const fd = new FormData(); fd.append('audio', f); fd.append('title', $('#upTitle').value); fd.append('lyrics', noText ? '' : $('#upLyrics').value); fd.append('instrumental', noText ? 'true' : 'false');
     const cv = $('#upCover').files[0]; if (cv) fd.append('cover', cv);
-    const xhr = new XMLHttpRequest(); xhr.open('POST', 'api/tracks'); for (const k in H) xhr.setRequestHeader(k, H[k]);
+    const xhr = new XMLHttpRequest(); xhr.open('POST', A('api/tracks')); for (const k in H) xhr.setRequestHeader(k, H[k]);
     $('#upProg').style.display = 'block'; $('#upSend').disabled = true; $('#upSend').textContent = 'Загружаем…';
     xhr.upload.onprogress = e => { if (e.lengthComputable) $('#upBar').style.width = (e.loaded / e.total * 100) + '%'; };
     const done = () => { $('#upSend').disabled = false; $('#upSend').textContent = 'Загрузить'; $('#upProg').style.display = 'none'; $('#upBar').style.width = 0; };

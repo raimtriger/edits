@@ -17,6 +17,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 
@@ -35,7 +36,10 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 WEBAPP_URL = os.environ.get("WEBAPP_URL", "")
 OWNER_IDS = {int(x) for x in os.environ.get("OWNER_IDS", "").replace(" ", "").split(",") if x}
 FREE_EDITS = int(os.environ.get("FREE_EDITS", "3"))
-DEV = os.environ.get("EDITS_DEV") == "1"            # локальные тесты без Telegram
+# страница может открываться с GitHub Pages (из России Cloudflare обрезает большие ответы),
+# тогда API вызывается с другого адреса. Список адресов страницы через запятую.
+CORS_ORIGINS = [o.strip().rstrip("/") for o in os.environ.get("CORS_ORIGINS", "https://raimtriger.github.io").split(",") if o.strip()]
+DEV =os.environ.get("EDITS_DEV") == "1"            # локальные тесты без Telegram
 FAKE_ASR = os.environ.get("EDITS_FAKE_ASR") == "1"  # тесты без модели распознавания
 MAX_UPLOAD = 80 * 1024 * 1024
 MAX_TRACK_SEC = 8 * 60
@@ -130,6 +134,9 @@ def current_user(x_init_data: str = Header(default=""), x_dev_user: str = Header
 
 # ---------------- API ----------------
 app = FastAPI(title="LUDUS EDITS")
+# вход по подписи Telegram в заголовке X-Init-Data, куки не используются — credentials не нужны
+app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+                   allow_headers=["*"], max_age=86400)
 
 
 def track_json(t: sqlite3.Row) -> dict:
