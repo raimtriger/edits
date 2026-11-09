@@ -6,15 +6,23 @@
 <meta name="theme-color" content="#0B0B0C">
 <title>LUDUS EDITS</title>
 <script src="tg.js"></script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@300;500;700&family=Manrope:wght@400;500;600;700&family=Inter:wght@300&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<link rel="preload" as="font" type="font/woff" href="fonts/web/unbounded-400.woff" crossorigin>
+<link rel="preload" as="font" type="font/woff" href="fonts/web/inter-400.woff" crossorigin>
+<link rel="preload" as="font" type="font/woff" href="fonts/web/inter-600.woff" crossorigin>
 <style>
+/* шрифты свои (fonts/web, лицензия OFL): Google Fonts из России открывается нестабильно */
+@font-face{font-family:'Inter';font-weight:300;font-style:normal;font-display:swap;src:url(fonts/web/inter-300.woff) format('woff')}
+@font-face{font-family:'Inter';font-weight:400 500;font-style:normal;font-display:swap;src:url(fonts/web/inter-400.woff) format('woff')}
+@font-face{font-family:'Inter';font-weight:600;font-style:normal;font-display:swap;src:url(fonts/web/inter-600.woff) format('woff')}
+@font-face{font-family:'Inter';font-weight:700 900;font-style:normal;font-display:swap;src:url(fonts/web/inter-700.woff) format('woff')}
+@font-face{font-family:'Unbounded';font-weight:300 500;font-style:normal;font-display:swap;src:url(fonts/web/unbounded-400.woff) format('woff')}
+@font-face{font-family:'Unbounded';font-weight:600 900;font-style:normal;font-display:swap;src:url(fonts/web/unbounded-800.woff) format('woff')}
 :root{
   --bg:#0B0B0C; --card:#17171A; --card2:#232328; --line:#1E1E22;
   --fg:#F2F2F0; --mute:#A3A3A8; --mute2:#8A8A90;
   --acc:#D4FF3A; --chorus:#FFC24D;
   --display:'Unbounded',system-ui,sans-serif;
-  --body:'Manrope',system-ui,-apple-system,sans-serif;
+  --body:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:var(--body)}
@@ -512,7 +520,7 @@ function toast(msg) { const el = $('#toast'); el.textContent = msg; el.classList
   const bar = mk('rect', { fill: LIME, opacity: 0 });
   const eEl = mk('path', { d: GL.g.e.d, fill: LIME, opacity: 0 });
   const tag = mk('text', { x: W / 2, y: cy + eH / 2 + 46, 'text-anchor': 'middle', fill: '#8A8A90', opacity: 0,
-    style: "font:600 12px Manrope,system-ui,sans-serif;letter-spacing:.42em" });
+    style: "font:600 12px Inter,system-ui,sans-serif;letter-spacing:.42em" });
   tag.textContent = 'LUDUS EDITS';
   svg.setAttribute('shape-rendering', 'geometricPrecision');
 
@@ -852,7 +860,7 @@ async function renderEdit() {
 
   const W = 720, H = 1280, cv2 = document.createElement('canvas'); cv2.width = W; cv2.height = H;
   const c = cv2.getContext('2d');
-  try { await document.fonts.load('300 46px Inter'); } catch (e) {}
+  try { await Promise.all([document.fonts.load('300 46px Inter'), document.fonts.load('600 20px Inter')]); } catch (e) {}
 
   const AC = window.AudioContext || window.webkitAudioContext;
   if (!audioGraph) {
@@ -919,7 +927,7 @@ async function renderEdit() {
         }
       }
       c.globalAlpha = 1; c.shadowBlur = 0;
-      c.font = '600 20px Manrope, sans-serif'; c.fillStyle = 'rgba(255,255,255,.55)'; c.fillText('LUDUS EDITS', W / 2, H - 60);
+      c.font = '600 20px Inter, sans-serif'; c.fillStyle = 'rgba(255,255,255,.55)'; c.fillText('LUDUS EDITS', W / 2, H - 60);
 
       $('#rBar').style.width = Math.min(100, t / dur * 100) + '%';
       if (t >= dur || aud.paused || aud.ended) { resolve(); return; }
