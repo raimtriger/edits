@@ -9,6 +9,7 @@ import json
 import logging
 import tempfile
 import os
+from urllib.parse import urlsplit
 import random
 import sqlite3
 import threading
@@ -16,7 +17,7 @@ import time
 import uuid
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
@@ -655,6 +656,15 @@ def tgjs():
 
 # фронтенд: отдаём ТОЛЬКО index.html (никаких статик-папок — рядом лежат .env и база)
 @app.get("/")
-def index():
+def index(request: Request):
+    # Старые кнопки и меню в клиентах Telegram помнят адрес сервера, а с него большая страница из России обрывается
+    # (вечная загрузка). Поэтому отправляем на GitHub Pages; кусок после # с подписью Telegram браузер переносит сам.
+    # PAGES_REDIRECT=0 в .env — отключить; ?local=1 — открыть страницу с сервера для проверки.
+    if WEBAPP_URL and os.environ.get("PAGES_REDIRECT", "1") != "0" and "local" not in request.query_params:
+        target = urlsplit(WEBAPP_URL)
+        if target.netloc and target.netloc != request.headers.get("host", ""):     # защита от петли
+            qs = request.url.query
+            return RedirectResponse(WEBAPP_URL + ((("&" if "?" in WEBAPP_URL else "?") + qs) if qs else ""),
+                                    status_code=302, headers={"Cache-Control": "no-store"})
     return FileResponse(WEB / "index.html", media_type="text/html",
                         headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"})
