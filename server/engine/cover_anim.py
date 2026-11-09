@@ -78,7 +78,15 @@ def render_cover_anim(cover: str, audio: str, out: str, start: float, dur: float
         return float(BEATS[np.argmin(abs(BEATS - x))]) if len(BEATS) else x
 
     # ---------- исходники ----------
-    cov = cv2.cvtColor(cv2.imread(cover), cv2.COLOR_BGR2RGB)
+    img = cv2.imread(cover)
+    if img is None:
+        raise ValueError("не удалось прочитать обложку — нужна картинка JPG, PNG или WebP")
+    ih, iw = img.shape[:2]
+    if ih != iw:                       # не квадратная — берём центральный квадрат, а не растягиваем
+        side = min(ih, iw)
+        y0, x0 = (ih - side) // 2, (iw - side) // 2
+        img = img[y0:y0 + side, x0:x0 + side]
+    cov = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     S = 1200
     card = cv2.resize(cov, (S, S), interpolation=cv2.INTER_AREA).astype(np.float32) / 255
     m = Image.new("L", (S * 4, S * 4), 0)

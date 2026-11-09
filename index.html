@@ -118,7 +118,9 @@ nav button.on{color:var(--fg)} nav button.on i{background:var(--acc)}
 #introPhr p{margin:0;font-family:var(--display);font-weight:500;font-size:clamp(26px,8vw,38px);line-height:1.15;letter-spacing:-.02em;opacity:0;transform:translateY(14px);transition:opacity .7s ease,transform .7s ease}
 #introPhr p.show{opacity:1;transform:none}
 #introPhr p.acc{color:var(--acc)}
-#intro small{position:absolute;bottom:calc(28px + env(safe-area-inset-bottom));left:0;right:0;text-align:center;color:#555;font-size:12px}
+#introSkip{position:absolute;left:50%;bottom:calc(28px + env(safe-area-inset-bottom));transform:translateX(-50%);padding:11px 22px;border:0;border-radius:999px;background:rgba(255,255,255,.1);color:#d6d6da;font:600 14px var(--body);letter-spacing:.01em;cursor:pointer;opacity:0;animation:skipIn .5s ease .7s forwards;-webkit-tap-highlight-color:transparent}
+#introSkip:active{background:rgba(255,255,255,.18)}
+@keyframes skipIn{to{opacity:1}}
 #intro.out{opacity:0;pointer-events:none}
 
 body.live .demo-only{display:none!important}
@@ -159,7 +161,7 @@ input[type=range]{accent-color:var(--acc)}
     <p>Уже надоело монтировать контент?</p>
     <p class="acc">Мы готовы помочь!</p>
   </div>
-  <small>тапни, чтобы пропустить</small>
+  <button id="introSkip" type="button">Пропустить</button>
 </div>
 
 <div id="app">
@@ -479,6 +481,7 @@ function toast(msg) { const el = $('#toast'); el.textContent = msg; el.classList
   const box = $('#intro'), svg = $('#introSvg'), ps = $$('#introPhr p');
   if (!box) return;
   let first = true;
+  const reduce = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
   try { first = !localStorage.getItem('le_seen'); localStorage.setItem('le_seen', '1'); } catch (e) {}
   if (/[?&]intro=1/.test(location.search)) first = true;
   if (/[?&]intro=2/.test(location.search)) first = false;
@@ -542,7 +545,9 @@ function toast(msg) { const el = $('#toast'); el.textContent = msg; el.classList
   const lerpRect = (a, b, p) => ({ x: L(a.x, b.x, p), y: L(a.y, b.y, p), w: L(a.w, b.w, p), h: L(a.h, b.h, p) });
 
   /* ---- таймлайны ---- */
-  function firstVisit(t) {
+  const SPEED = 1.6;   // во сколько раз быстрее исходного хода (9,7 с -> ~6 с)
+  function firstVisit(tr) {
+    const t = tr * SPEED;
     [0.3, 1.9, 3.5].forEach((s, i) => ps[i].classList.toggle('show', t >= s && t < 5.3));
     // надпись собирается по буквам
     const appear = i => eo(P(t, 6.1 + i * 0.06, 0.5));
@@ -565,6 +570,7 @@ function toast(msg) { const el = $('#toast'); el.textContent = msg; el.classList
     return t >= 9.7;
   }
   function returning(t) {
+    if (reduce) return true;
     const g = eo(P(t, 0.05, 0.55));
     setRect({ x: LOGO.bar.x, y: LOGO.bar.y, w: LOGO.bar.w, h: LOGO.bar.h * g }, 1);
     const p = P(t, 0.4, 1.0);
@@ -575,8 +581,8 @@ function toast(msg) { const el = $('#toast'); el.textContent = msg; el.classList
   }
 
   /* ---- запуск ---- */
-  const run = first ? firstVisit : returning;
-  if (!first) { $('#introPhr').style.display = 'none'; $('#intro small').style.display = 'none'; }
+  const run = first && !reduce ? firstVisit : returning;
+  if (!first || reduce) { $('#introPhr').style.display = 'none'; $('#introSkip').style.display = 'none'; }
   let t0 = null, done = false, raf;
   function finish() {
     if (done) return; done = true; cancelAnimationFrame(raf);
@@ -589,6 +595,7 @@ function toast(msg) { const el = $('#toast'); el.textContent = msg; el.classList
   }
   raf = requestAnimationFrame(frame);
   box.addEventListener('click', finish);
+  $('#introSkip').addEventListener('click', e => { e.stopPropagation(); finish(); });
   window.__introSeek = t => run(t);   // для проверки кадров
 })();
 
