@@ -205,6 +205,9 @@ input[type=range]{accent-color:var(--acc)}
     <div class="pill"><span class="dot"></span><span id="homePill">Автопилот · день 12</span></div>
   </div>
   <div class="mute" id="homeHello" style="font-size:14px">Привет! Эдит на сегодня уже готов.</div>
+  <div id="homeLoop" style="display:none;position:relative;border-radius:22px;overflow:hidden;aspect-ratio:8/5;background:#141416;opacity:0;transition:opacity .6s">
+    <video muted loop autoplay playsinline preload="auto" disablepictureinpicture style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></video>
+    <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(11,11,12,0) 45%,rgba(11,11,12,.55))"></div></div>
   <div class="live-only" id="liveHome" style="flex-direction:column;gap:14px"></div>
   <div class="edit" id="editBox">
     <canvas id="cv"></canvas>
@@ -1058,6 +1061,14 @@ $('#render').onclick = () => renderEdit().catch(err => {
   $('#hint').textContent = 'Отрывок — припев, его нашли сами. Монтаж занимает 2–4 минуты, готовое видео придёт в бот.';
   $('#mount').textContent = 'Смонтировать';
   $('#pay').onclick = () => toast('Оплата появится позже — сейчас всё бесплатно');
+  /* цикл на главной: маленькое беззвучное видео; нет файла или не загрузилось — блок просто не показываем */
+  (() => {
+    const box = $('#homeLoop'), v = box && box.querySelector('video'); if (!v) return;
+    v.addEventListener('loadeddata', () => { box.style.display = 'block'; requestAnimationFrame(() => { box.style.opacity = 1; }); v.play().catch(() => {}); });
+    v.addEventListener('error', () => { box.style.display = 'none'; });
+    document.addEventListener('visibilitychange', () => { if (document.hidden) v.pause(); else if (box.style.display === 'block') v.play().catch(() => {}); });
+    v.src = A('api/home-loop.mp4?v=1');
+  })();
 
   /* главная */
   function renderHome() {

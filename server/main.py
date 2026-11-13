@@ -499,6 +499,33 @@ def media(eid: str):
     return FileResponse(e["video"], media_type="video/mp4")
 
 
+HOME_LOOP = DATA / "home-loop.mp4"
+
+
+@app.get("/api/home-loop.mp4")
+def home_loop(request: Request):
+    """Короткий беззвучный цикл для главного экрана. Отдаём сами с Range (iOS без 206 видео не играет)."""
+    from fastapi.responses import Response
+    if not HOME_LOOP.exists():
+        raise HTTPException(404)
+    data = HOME_LOOP.read_bytes()
+    n = len(data)
+    h = {"Accept-Ranges": "bytes", "Cache-Control": "max-age=3600", "Content-Type": "video/mp4"}
+    rng = request.headers.get("range", "")
+    if rng.startswith("bytes="):
+        try:
+            s, _, e = rng[6:].partition("-")
+            start = int(s) if s else max(0, n - int(e))
+            end = min(int(e), n - 1) if (e and s) else n - 1
+            if start > end or start >= n:
+                return Response(status_code=416, headers={"Content-Range": f"bytes */{n}"})
+            h["Content-Range"] = f"bytes {start}-{end}/{n}"
+            return Response(data[start:end + 1], status_code=206, headers=h)
+        except ValueError:
+            pass
+    return Response(data, headers=h)
+
+
 @app.get("/api/health")
 def health():
     return {"ok": True, "build": BUILD, "queue": q("SELECT COUNT(*) c FROM edits WHERE status IN ('queued','rendering')", one=True)["c"]}
