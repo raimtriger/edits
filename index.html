@@ -1182,7 +1182,8 @@ $('#render').onclick = () => renderEdit().catch(err => {
     if (!cur) return;
     const v = parseTime(e.target.value), k = id === 'tmS' ? 'frag_start' : 'frag_end';
     if (isNaN(v)) { toast('Формат: 1:23 или 83'); drawFrag(); return; }
-    cur[k] = v; clampFrag(id === 'tmS' ? 's' : 'e'); drawFrag(); renderLiveLines();
+    cur[k] = v; if (id === 'tmS') cur.frag_end = Math.min(DUR(), v + 15);
+    clampFrag(id === 'tmS' ? 's' : 'e'); drawFrag(); renderLiveLines();
   }));
   $('#fragPlay').onclick = () => { if (!cur) return; if (isPlaying()) stopPlayback(); else startPlayback(cur.frag_start, cur.frag_end); };
   $('#fragAuto').onclick = () => {
