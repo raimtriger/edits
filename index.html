@@ -158,9 +158,9 @@ body.live #kindSeg{display:grid!important;grid-template-columns:1fr 1fr}
 .mk{display:flex;flex-direction:column;gap:12px}
 .tm{display:flex;flex-direction:column;gap:6px}
 .tml{font-size:12px;color:var(--mute);font-weight:700;text-transform:uppercase;letter-spacing:.06em}
-.tm2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.tm2 label{display:flex;flex-direction:column;gap:6px;font:600 11px var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--mute,#8a8a90)}
-.tm2 input{min-width:0;height:48px;border-radius:12px;border:1px solid var(--card2);background:var(--bg);color:var(--fg);text-align:center;font:600 20px var(--body);font-variant-numeric:tabular-nums;letter-spacing:0;text-transform:none}
+.tm2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+.tm2 label{min-width:0;display:flex;flex-direction:column;gap:6px;font:600 11px var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--mute,#8a8a90)}
+.tm2 input{width:100%;box-sizing:border-box;min-width:0;height:48px;border-radius:12px;border:1px solid var(--card2);background:var(--bg);color:var(--fg);text-align:center;font:600 20px var(--body);font-variant-numeric:tabular-nums;letter-spacing:0;text-transform:none}
 .tmr{display:grid;grid-template-columns:44px 44px 1fr 44px 44px;gap:6px}
 .tmr button{height:44px;border-radius:10px;background:var(--card2);font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
 .tmr input{min-width:0;height:44px;border-radius:10px;border:1px solid var(--card2);background:var(--bg);color:var(--fg);text-align:center;font:600 16px var(--body);font-variant-numeric:tabular-nums}
