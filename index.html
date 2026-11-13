@@ -28,7 +28,7 @@
 html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:var(--body)}
 button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;padding:0}
 a{color:inherit;text-decoration:none}
-#app{max-width:480px;height:100%;margin:0 auto;display:flex;flex-direction:column;position:relative;overflow:hidden}
+#app{max-width:480px;height:var(--tg-viewport-stable-height,100%);margin:0 auto;display:flex;flex-direction:column;position:relative;overflow:hidden}
 main{flex:1;overflow-y:auto;padding:18px 18px 28px;-webkit-overflow-scrolling:touch}
 .screen{display:none;flex-direction:column;gap:14px;animation:in .35s ease}
 .screen.on{display:flex}
@@ -158,6 +158,9 @@ body.live #kindSeg{display:grid!important;grid-template-columns:1fr 1fr}
 .mk{display:flex;flex-direction:column;gap:12px}
 .tm{display:flex;flex-direction:column;gap:6px}
 .tml{font-size:12px;color:var(--mute);font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+.tm2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tm2 label{display:flex;flex-direction:column;gap:6px;font:600 11px var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--mute,#8a8a90)}
+.tm2 input{min-width:0;height:48px;border-radius:12px;border:1px solid var(--card2);background:var(--bg);color:var(--fg);text-align:center;font:600 20px var(--body);font-variant-numeric:tabular-nums;letter-spacing:0;text-transform:none}
 .tmr{display:grid;grid-template-columns:44px 44px 1fr 44px 44px;gap:6px}
 .tmr button{height:44px;border-radius:10px;background:var(--card2);font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
 .tmr input{min-width:0;height:44px;border-radius:10px;border:1px solid var(--card2);background:var(--bg);color:var(--fg);text-align:center;font:600 16px var(--body);font-variant-numeric:tabular-nums}
@@ -263,16 +266,13 @@ input[type=range]{accent-color:var(--acc)}
   <div class="mute" id="fragInfo" style="display:none"></div>
   <div class="card live-only" style="flex-direction:column;gap:12px;padding:14px">
     <div class="row" style="justify-content:space-between"><b style="font-size:15px">Фрагмент для эдита</b><span class="mute" id="fragLbl" style="font-variant-numeric:tabular-nums"></span></div>
-    <div class="tm"><span class="tml">Начало</span>
-      <div class="tmr"><button data-tm="s" data-d="-1">−1</button><input id="tmS" inputmode="decimal" aria-label="Начало фрагмента"><button data-tm="s" data-d="1">+1</button></div></div>
-    <div class="tm"><span class="tml">Конец</span>
-      <div class="tmr"><button data-tm="e" data-d="-1">−1</button><input id="tmE" inputmode="decimal" aria-label="Конец фрагмента"><button data-tm="e" data-d="1">+1</button></div></div>
+    <div class="tm2"><label>Начало<input id="tmS" aria-label="Начало фрагмента" autocomplete="off"></label><label>Конец<input id="tmE" aria-label="Конец фрагмента" autocomplete="off"></label></div>
     <div class="prog"><b id="fragBar" style="width:0"></b></div>
     <div class="row" style="gap:8px">
       <button class="btn acc" id="fragPlay" style="flex:1;height:48px">▶ Слушать фрагмент</button>
       <button class="chip" id="fragAuto" style="height:48px;background:var(--card2)">Припев</button>
     </div>
-    <div class="mute" style="font-size:12px">Можно вписать время руками: 1:23 · от 3 до 60 с</div>
+    <div class="mute" style="font-size:12px">Нажми на время и впиши, например 1:23 · от 3 до 60 с</div>
   </div>
   <div class="card row live-only" style="gap:12px;padding:12px">
     <span id="lnCoverPrev" style="width:56px;height:56px;border-radius:12px;background:var(--card2) center/cover no-repeat;flex-shrink:0"></span>
@@ -484,6 +484,7 @@ input[type=range]{accent-color:var(--acc)}
 /* ---------- Telegram Mini App ---------- */
 const TG = window.Telegram && Telegram.WebApp;
 try { if (TG && TG.initData) { TG.ready(); TG.expand(); TG.setHeaderColor('#0B0B0C'); TG.setBackgroundColor('#0B0B0C'); } } catch (e) {}
+document.addEventListener('focusout', () => setTimeout(() => window.scrollTo(0, 0), 80));
 const haptic = () => { try { TG && TG.HapticFeedback && TG.HapticFeedback.impactOccurred('light'); } catch (e) {} };
 document.addEventListener('click', e => { if (e.target.closest('button')) haptic(); });
 
