@@ -264,15 +264,15 @@ input[type=range]{accent-color:var(--acc)}
   <div class="card live-only" style="flex-direction:column;gap:12px;padding:14px">
     <div class="row" style="justify-content:space-between"><b style="font-size:15px">Фрагмент для эдита</b><span class="mute" id="fragLbl" style="font-variant-numeric:tabular-nums"></span></div>
     <div class="tm"><span class="tml">Начало</span>
-      <div class="tmr"><button data-tm="s" data-d="-1">−1</button><button data-tm="s" data-d="-0.1">−.1</button><input id="tmS" inputmode="decimal" aria-label="Начало фрагмента"><button data-tm="s" data-d="0.1">+.1</button><button data-tm="s" data-d="1">+1</button></div></div>
+      <div class="tmr"><button data-tm="s" data-d="-1">−1</button><input id="tmS" inputmode="decimal" aria-label="Начало фрагмента"><button data-tm="s" data-d="1">+1</button></div></div>
     <div class="tm"><span class="tml">Конец</span>
-      <div class="tmr"><button data-tm="e" data-d="-1">−1</button><button data-tm="e" data-d="-0.1">−.1</button><input id="tmE" inputmode="decimal" aria-label="Конец фрагмента"><button data-tm="e" data-d="0.1">+.1</button><button data-tm="e" data-d="1">+1</button></div></div>
+      <div class="tmr"><button data-tm="e" data-d="-1">−1</button><input id="tmE" inputmode="decimal" aria-label="Конец фрагмента"><button data-tm="e" data-d="1">+1</button></div></div>
     <div class="prog"><b id="fragBar" style="width:0"></b></div>
     <div class="row" style="gap:8px">
       <button class="btn acc" id="fragPlay" style="flex:1;height:48px">▶ Слушать фрагмент</button>
       <button class="chip" id="fragAuto" style="height:48px;background:var(--card2)">Припев</button>
     </div>
-    <div class="mute" style="font-size:12px">Можно вписать время руками: 1:23.456 · от 3 до 60 с</div>
+    <div class="mute" style="font-size:12px">Можно вписать время руками: 1:23 · от 3 до 60 с</div>
   </div>
   <div class="card row live-only" style="gap:12px;padding:12px">
     <span id="lnCoverPrev" style="width:56px;height:56px;border-radius:12px;background:var(--card2) center/cover no-repeat;flex-shrink:0"></span>
@@ -1060,9 +1060,9 @@ $('#render').onclick = () => renderEdit().catch(err => {
     if (done) {
       const t = tracks.find(x => x.id === done.track_id);
       parts.push(`<div style="display:flex;flex-direction:column;gap:10px"><span class="lbl">Последний эдит${t ? ' · «' + esc(t.title) + '»' : ''}</span>
-        <video src="${A(done.url)}" controls playsinline preload="metadata" style="width:100%;border-radius:22px;aspect-ratio:9/16;max-height:62vh;background:#000"></video>
-        <div class="grid2"><button class="btn acc" id="hAgain">Ещё вариант</button><button class="btn dark" data-go="upload">Новый трек</button></div>
-        <div class="mute" style="text-align:center;font-size:12px">Видео уже в чате с ботом — оттуда удобно переслать или сохранить</div></div>`);
+        <div class="card" style="display:flex;flex-direction:column;gap:6px"><b style="font-size:16px">Видео уже в чате с ботом ✓</b><span class="mute">Оттуда его удобно пересылать и сохранять</span></div>
+        <button class="btn acc" id="hBot">Открыть чат с ботом</button>
+        <div class="grid2"><button class="btn dark" id="hAgain">Ещё вариант</button><button class="btn dark" data-go="upload">Новый трек</button></div></div></div>`);
     } else if (proc) {
       parts.push(`<div class="card" style="display:flex;flex-direction:column;gap:6px"><b style="font-size:16px">«${esc(proc.title)}» обрабатывается</b><span class="mute">Распознаём текст и ищем припев · 2–5 минут. Напишем в бот, когда будет готово.</span></div>`);
     } else if (ready.length) {
@@ -1073,6 +1073,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
         <button class="btn acc" data-go="upload">Загрузить трек</button></div>`);
     }
     $('#liveHome').innerHTML = parts.join('');
+    const hb = $('#hBot'); if (hb) hb.onclick = () => { try { window.Telegram.WebApp.close(); } catch (e) {} };
     const again = $('#hAgain');
     if (again) again.onclick = async () => {
       try { await api('api/edits', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ track_id: done.track_id, mode: done.params.mode, bw: done.params.bw, footage: done.params.footage }) });
@@ -1094,7 +1095,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
   function renderTracks() {
     $('#trackList').innerHTML = tracks.length ? tracks.map(t => {
       const [s, c] = stLabel(t);
-      return `<button class="track" data-tid="${t.id}"><span class="cover" style="background:#C9C9CD ${t.cover_url ? `url('${A(t.cover_url)}') center/cover` : ''}">${t.cover_url ? '' : esc(t.title.slice(0, 2))}</span>
+      return `<button class="track" data-tid="${t.id}"><span class="cover" style="background:#C9C9CD ${t.cover_url ? `url('${A(t.cover_url + '&s=1')}') center/cover` : ''}">${t.cover_url ? '' : esc(t.title.slice(0, 2))}</span>
         <span style="flex:1;display:flex;flex-direction:column;gap:4px;min-width:0"><b style="font-size:16px;font-weight:600">«${esc(t.title)}»</b>
         <span style="font-size:13px;color:${c}">${t.status === 'error' ? esc(t.error || s) + ' · тапни, чтобы удалить' : s}</span></span>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6E6E74" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg></button>`;
@@ -1152,7 +1153,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
 
   /* ---- фрагмент: «от» и «до» в секундах с миллисекундами ---- */
   const DUR = () => cur.duration || Math.max(cur.frag_end + 1, 60);
-  const fmtMs = t => { t = Math.max(0, t); const m = Math.floor(t / 60), s = t - m * 60; return m + ':' + s.toFixed(3).padStart(6, '0'); };
+  const fmtMs = t => { t = Math.max(0, Math.round(t)); return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0'); };
   function parseTime(v) {
     v = String(v).trim().replace(',', '.');
     const m = v.match(/^(\d+):(\d{1,2}(?:\.\d+)?)$/);
@@ -1179,7 +1180,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
   ['tmS', 'tmE'].forEach(id => $('#' + id).addEventListener('change', e => {
     if (!cur) return;
     const v = parseTime(e.target.value), k = id === 'tmS' ? 'frag_start' : 'frag_end';
-    if (isNaN(v)) { toast('Формат: 1:23.456 или 83.456'); drawFrag(); return; }
+    if (isNaN(v)) { toast('Формат: 1:23 или 83'); drawFrag(); return; }
     cur[k] = v; clampFrag(id === 'tmS' ? 's' : 'e'); drawFrag(); renderLiveLines();
   }));
   $('#fragPlay').onclick = () => { if (!cur) return; if (isPlaying()) stopPlayback(); else startPlayback(cur.frag_start, cur.frag_end); };
@@ -1193,8 +1194,8 @@ $('#render').onclick = () => renderEdit().catch(err => {
     $('#linesSub').textContent = instr ? 'Композиция без слов — выбери фрагмент' : 'Проверь, вовремя ли загорается строка';
     $('#fragAuto').textContent = instr ? 'Самое яркое' : 'Припев';
     $('#linesNote').style.display = instr || !cur.lines.length ? 'none' : '';
-    $('#lnCoverPrev').style.backgroundImage = cur.cover_url ? `url('${A(cur.cover_url)}')` : '';
-    $('#lnCoverTxt').textContent = cur.cover_url ? 'Загружена ✓' : 'Нужна для анимаций и сторис';
+    $('#lnCoverPrev').style.backgroundImage = cur.cover_url ? `url('${A(cur.cover_url + '&s=1')}')` : '';
+    $('#lnCoverTxt').textContent = cur.cover_url ? 'Обложка загружена ✓' : 'Нужна для анимаций и сторис';
     $('#fragInfo').style.display = 'block';
     $('#fragInfo').textContent = instr ? 'Текст не нужен: эдит смонтируется без субтитров.'
       : 'Тап по строке — послушать её. Блеклые строки не попадут в эдит.';
@@ -1445,8 +1446,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
       const cmain = isCov ? ((e.params.fields && (e.params.fields.caption || e.params.fields.title)) || e.params.caption) : '';
       const meta = isCov ? 'обложка · ' + esc(cst.title) + ' · ' + esc(cfm.ratio) + (cmain ? ' · ' + esc(cmain) : '')
         : (e.params.mode === 'word' ? 'по слову' : 'строкой') + (e.params.bw ? ' · ч/б' : '') + (fn ? ' · ' + esc(fn) : '');
-      if (e.status === 'done') return `<div class="card" style="padding:10px;display:flex;flex-direction:column;gap:8px">
-        <video src="${A(e.url)}" controls playsinline preload="metadata" style="width:${cfm && cfm.w >= cfm.h ? '100%' : 'min(100%,' + (60 * (cfm ? cfm.w / cfm.h : 9 / 16)).toFixed(1) + 'vh)'};align-self:center;border-radius:12px;aspect-ratio:${cfm ? cfm.w + '/' + cfm.h : '9/16'};background:#000"></video>
+      if (e.status === 'done') return `<div class="card" style="padding:14px;display:flex;flex-direction:column;gap:4px">
         <span class="mute">${name} · ${meta} · уже в боте</span></div>`;
       return `<div class="card mute">${name} · ${meta} — ${e.status === 'error' ? 'ошибка: ' + esc(e.error) : e.status === 'rendering' ? 'монтируем…' : 'в очереди…'}</div>`;
     }).join('') : '';

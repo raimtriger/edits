@@ -312,10 +312,19 @@ async def upload_cover(tid: str, cover: UploadFile = File(...), u=Depends(curren
 
 
 @app.get("/api/tracks/{tid}/cover")
-def track_cover(tid: str):
+def track_cover(tid: str, s: int = 0):
     t = q("SELECT cover FROM tracks WHERE id=?", (tid,), one=True)
     if not t or not t["cover"] or not Path(t["cover"]).exists():
         raise HTTPException(404)
+    if s:
+        th = Path(t["cover"]).with_suffix(".s.jpg")
+        if not th.exists() or th.stat().st_mtime < Path(t["cover"]).stat().st_mtime:
+            from PIL import Image
+            im = Image.open(t["cover"]).convert("RGB")
+            w, h = im.size; k = min(w, h)
+            im = im.crop(((w - k) // 2, (h - k) // 2, (w + k) // 2, (h + k) // 2)).resize((160, 160))
+            im.save(th, "JPEG", quality=70)
+        return FileResponse(th, headers={"Cache-Control": "max-age=86400"})
     return FileResponse(t["cover"], headers={"Cache-Control": "max-age=86400"})
 
 

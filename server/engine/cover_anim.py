@@ -131,10 +131,10 @@ def render_cover_anim(cover: str, audio: str, out: str, start: float, dur: float
 
     title = (title or "").strip()[:24]
     size = title_size
-    g1, w1 = glyphs(title, size, 6, (236, 236, 236, 255)) if title else ([], 0)
+    g1, w1 = glyphs(title, size, 6, (255, 255, 255, 255)) if title else ([], 0)
     while w1 > W * 0.86 and size > 40:          # длинный текст — уменьшаем, чтобы влез
         size -= 6
-        g1, w1 = glyphs(title, size, 6, (236, 236, 236, 255))
+        g1, w1 = glyphs(title, size, 6, (255, 255, 255, 255))
 
     def blit(canvas, rgba, x, y, alpha):
         h, w = rgba.shape[:2]
