@@ -53,6 +53,34 @@ main{flex:1;overflow-y:auto;padding:18px 18px 28px;-webkit-overflow-scrolling:to
 .seg button.on{background:var(--fg);color:#0B0B0C}
 .tog{height:44px;border-radius:12px;background:var(--card);font-weight:600;font-size:13px}
 .tog.on{background:var(--fg);color:#0B0B0C}
+/* обложка: формат, галерея стилей, предпросмотр */
+.fmtrow{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.fmt{display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 4px 10px;border-radius:14px;background:var(--card);border:1.5px solid transparent;color:#C9C9CD;font-size:11px;font-weight:600;line-height:1.2}
+.fmt i{display:block;border:2px solid currentColor;border-radius:4px}
+.fmt b{font-size:14px;color:var(--fg)}
+.fmt.on{border-color:var(--acc);background:#1A1E0E}.fmt.on i,.fmt.on b{color:var(--acc)}
+.stylerow{display:flex;gap:10px;overflow-x:auto;margin:0 -16px;padding:2px 16px 6px;scroll-snap-type:x proximity;scrollbar-width:none}
+.stylerow::-webkit-scrollbar{display:none}
+.sty{flex:0 0 148px;scroll-snap-align:start;text-align:left;padding:10px;border-radius:16px;background:var(--card);border:1.5px solid transparent;display:flex;flex-direction:column;gap:8px}
+.sty.on{border-color:var(--acc)}
+.sty .th{height:108px;border-radius:10px;background:#101012;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.sty .thf{position:relative;border-radius:6px;overflow:hidden;background:#222 center/cover no-repeat}
+.sty .thf::after{content:"";position:absolute;left:50%;top:50%;width:46%;aspect-ratio:1;transform:translate(-50%,-50%);border-radius:5px;background:var(--cv,#444) center/cover;box-shadow:0 3px 10px #0008}
+.sty .thf video,.sty .thf img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:2}
+.sty b{font-size:14px}.sty .tag{font-size:11px;color:var(--mute);margin-top:2px}
+.bdg{align-self:flex-start;font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;background:var(--card2);color:var(--mute)}
+.bdg.ok{background:var(--acc);color:#0B0B0C}
+.covprev{position:relative;margin:0 auto;border-radius:14px;overflow:hidden;background:#101012;container-type:inline-size}
+.covprev .bg{position:absolute;inset:-12%;background:var(--cv,#333) center/cover;filter:blur(22px) saturate(1.2) brightness(.5)}
+.covprev .cd{position:absolute;aspect-ratio:1;border-radius:2.4cqw;background:var(--cv,#444) center/cover;box-shadow:0 14px 40px #000a}
+.covprev .tx{position:absolute;text-align:center;font:500 7cqw var(--display);letter-spacing:.02em;line-height:1.15;text-shadow:0 2px 14px #000b}
+.covprev .tx small{display:block;font:500 3.4cqw var(--body);opacity:.8;margin-top:1.4cqw;letter-spacing:.04em}
+.covprev .ln{position:absolute;display:flex;flex-direction:column;gap:2.2cqw}
+.covprev .ln span{display:block;height:2.4cqw;border-radius:2cqw;background:#fff4}.covprev .ln span.hi{background:var(--acc)}
+.covprev .soon{position:absolute;inset:0;z-index:3;background:#0009;display:flex;align-items:center;justify-content:center}
+.covprev .soon span{padding:8px 14px;border-radius:999px;background:var(--card);font-weight:700;font-size:13px}
+.covprev video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:2}
+.inp{width:100%;background:var(--bg);color:var(--fg);border:1px solid var(--card2);border-radius:12px;padding:12px;font:600 15px var(--body)}
 nav{height:74px;flex-shrink:0;border-top:1px solid var(--line);background:#0E0E10;display:grid;grid-template-columns:repeat(4,1fr);padding:0 8px env(safe-area-inset-bottom)}
 nav button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;font-size:12px;font-weight:600;color:var(--mute2)}
 nav button i{width:22px;height:3px;border-radius:2px;background:transparent;transition:background .2s}
@@ -262,15 +290,24 @@ input[type=range]{accent-color:var(--acc)}
 <!-- СТУДИЯ -->
 <section class="screen" data-s="studio">
   <div class="h1">Студия</div>
-  <div class="seg live-only" id="kindSeg" style="grid-template-columns:1fr 1fr"><button class="on" data-k="edit">Эдит</button><button data-k="cover">Анимация обложки</button></div>
+  <div class="seg live-only" id="kindSeg" style="grid-template-columns:1fr 1fr"><button class="on" data-k="edit">Эдит</button><button data-k="cover">Обложка</button></div>
   <div class="seg demo-only" id="seg"><button class="on" data-t="edits">Эдиты</button><button data-t="stories">Сторис</button><button data-t="youtube">YouTube</button></div>
   <div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Трек</span>
     <div class="card row" id="studioTrack" style="justify-content:space-between;padding:12px 14px"><span style="font-weight:600">«30» · припев 0:12–0:33</span><span class="mute">сменить</span></div><div id="liveTracks" style="display:none;flex-wrap:wrap;gap:8px"></div></div>
   <div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Футажи</span><div id="foot" style="display:flex;flex-wrap:wrap;gap:8px"></div></div>
   <div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Текст</span>
     <div class="grid3"><button class="tog on" data-m="line">Строкой</button><button class="tog" data-m="word">По слову</button><button class="tog" id="bw">Ч/Б</button></div></div>
-  <div class="live-only" id="captionBox" style="flex-direction:column;gap:8px;display:none!important"><span class="lbl">Надпись</span>
-    <input id="caption" value="ПРЕМЬЕРА" maxlength="24" style="width:100%;background:var(--bg);color:var(--fg);border:1px solid var(--card2);border-radius:12px;padding:12px;font:600 15px var(--body);text-transform:uppercase">
+  <!-- ОБЛОЖКА: формат → стиль → предпросмотр → поля. Всё строится из GET /api/cover/styles (server/engine/cover_styles.py) -->
+  <div class="live-only" id="coverBox" style="flex-direction:column;gap:18px;display:none!important">
+    <div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Формат</span>
+      <div class="fmtrow" id="fmtRow"></div>
+      <div class="mute" id="fmtHint" style="font-size:12px"></div></div>
+    <div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Стиль анимации</span>
+      <div class="stylerow" id="styleRow"></div></div>
+    <div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Предпросмотр</span>
+      <div class="covprev" id="covPrev"></div>
+      <div class="mute" id="styleDesc" style="font-size:12px"></div></div>
+    <div id="fieldsBox" style="display:flex;flex-direction:column;gap:12px"></div>
   </div>
   <div class="live-only" style="flex-direction:column;gap:8px"><span class="lbl">Шрифт</span>
     <div id="fontChips" style="display:flex;flex-wrap:wrap;gap:8px"></div>
@@ -1218,6 +1255,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
     if (!ready.find(t => t.id === selTrack)) selTrack = ready[0] ? ready[0].id : null;
     box.innerHTML = ready.length ? ready.map(t => `<button class="chip ${t.id === selTrack ? 'on' : ''}" data-st="${t.id}">«${esc(t.title)}»</button>`).join('')
       : '<span class="mute">Сначала загрузи трек во вкладке «Треки»</span>';
+    if (typeof paintCover === 'function' && selKind === 'cover') paintCover();
   }
   $('#liveTracks').onclick = e => { const b = e.target.closest('[data-st]'); if (!b) return; selTrack = b.dataset.st; renderStudioTracks(); };
   async function loadFoot() {
@@ -1231,7 +1269,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
   const mountMsg = document.createElement('div');
   mountMsg.className = 'mute'; mountMsg.style.cssText = 'text-align:center;font-size:13px;min-height:18px';
   mountBtn.after(mountMsg);
-  const mountLabel = () => selKind === 'cover' ? 'Оживить обложку' : 'Смонтировать';
+  const mountLabel = () => selKind !== 'cover' ? 'Смонтировать' : comboStatus() === 'ready' ? 'Оживить обложку' : 'Скоро · ' + curStyle().title + ' ' + curFmt().ratio;
   mountBtn.onclick = async () => {
     if (mountBtn.disabled) return;
     if (!selTrack) { mountMsg.style.color = '#ff6b6b'; mountMsg.textContent = 'Сначала загрузи трек во вкладке «Треки»'; return; }
@@ -1240,12 +1278,16 @@ $('#render').onclick = () => renderEdit().catch(err => {
       mountMsg.style.color = '#ff6b6b'; mountMsg.innerHTML = 'У трека нет обложки — <u style="cursor:pointer">добавить</u>';
       mountMsg.querySelector('u').onclick = () => openLines(t); return;
     }
+    if (selKind === 'cover' && comboStatus() !== 'ready') {
+      mountMsg.style.color = '#ff6b6b'; mountMsg.textContent = '«' + curStyle().title + '» для ' + curFmt().ratio + ' пока в разработке — выбери другой формат или стиль'; return;
+    }
     const mode = ($('[data-m].on') || {}).dataset?.m || 'line';
+    const cf = coverFields();
     mountBtn.disabled = true; mountBtn.style.opacity = .6; mountBtn.textContent = 'Отправляем…'; mountMsg.textContent = '';
     try {
       await api('api/edits', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ track_id: selTrack, mode, bw: $('#bw').classList.contains('on'), footage: selFoot, font: selFont,
-          kind: selKind, caption: $('#caption').value.toUpperCase() }) });
+          kind: selKind, caption: (cf.caption || 'ПРЕМЬЕРА').toUpperCase(), style: selStyle, format: selFmt, fields: cf }) });
       try { TG && TG.HapticFeedback && TG.HapticFeedback.notificationOccurred('success'); } catch (e) {}
       mountBtn.textContent = '✓ Принято';
       mountMsg.style.color = 'var(--acc)';
@@ -1262,12 +1304,87 @@ $('#render').onclick = () => renderEdit().catch(err => {
     $$('#kindSeg button').forEach(b => b.classList.toggle('on', b.dataset.k === selKind));
     const cov = selKind === 'cover';
     footBlock.style.display = cov ? 'none' : ''; modeBlock.style.display = cov ? 'none' : '';
-    $('#captionBox').style.setProperty('display', cov ? 'flex' : 'none', 'important');
-    if (!mountBtn.disabled) mountBtn.textContent = cov ? 'Оживить обложку' : 'Смонтировать';
-    $('#hint').textContent = cov
-      ? 'Обложка трека оживает под выбранный фрагмент: 3D-движение, пульс под бит, надпись по буквам. Монтаж 4–6 минут, видео придёт в бот.'
-      : 'Отрывок — припев, его нашли сами. Монтаж занимает 2–4 минуты, готовое видео придёт в бот.';
+    $('#coverBox').style.setProperty('display', cov ? 'flex' : 'none', 'important');
+    if (cov) paintCover();
+    else {
+      if (!mountBtn.disabled) { mountBtn.textContent = 'Смонтировать'; mountBtn.style.opacity = 1; }
+      $('#hint').textContent = 'Отрывок — припев, его нашли сами. Монтаж занимает 2–4 минуты, готовое видео придёт в бот.';
+    }
   }
+
+  /* ---------- обложка: форматы и стили ----------
+     Источник — GET /api/cover/styles (server/engine/cover_styles.py). Если сервер ещё старый — вшитый минимум, экран не ломается. */
+  const COVER_FALLBACK = {
+    formats: [{ id: '9x16', title: 'Reels · Shorts', ratio: '9:16', w: 1080, h: 1920, hint: 'Instagram Reels, YouTube Shorts, TikTok, VK Клипы' }],
+    fields: { caption: { label: 'Надпись', default: 'ПРЕМЬЕРА', max: 24, upper: true } },
+    styles: [{ id: 'premiere_classic', title: 'Классика', tag: 'Премьера', desc: 'Обложка влетает с 3D-поворотом, пульсирует под бит, надпись набирается по буквам.',
+      fields: ['caption'], formats: { '9x16': 'ready' }, preview: null }],
+    default: { style: 'premiere_classic', format: '9x16' } };
+  let covReg = COVER_FALLBACK, selStyle = COVER_FALLBACK.default.style, selFmt = COVER_FALLBACK.default.format;
+  try { selStyle = localStorage.getItem('le_cstyle') || selStyle; selFmt = localStorage.getItem('le_cfmt') || selFmt; } catch (e) {}
+  const covVals = {};                                   // что пользователь уже набрал — не теряется при смене стиля
+  const curStyle = () => covReg.styles.find(x => x.id === selStyle) || covReg.styles[0];
+  const curFmt = () => covReg.formats.find(x => x.id === selFmt) || covReg.formats[0];
+  const fmtById = id => covReg.formats.find(x => x.id === id) || covReg.formats[0];
+  const statusOf = (st, fid) => (st.formats || {})[fid] === 'ready' ? 'ready' : 'soon';
+  const comboStatus = () => statusOf(curStyle(), curFmt().id);
+  const selTrackObj = () => tracks.find(x => x.id === selTrack);
+  const coverFields = () => { const o = {}; $$('#fieldsBox [data-f]').forEach(i => { o[i.dataset.f] = i.value.trim(); }); return o; };
+  const coverVal = (k, sp) => covVals[k] !== undefined ? covVals[k] : (sp.from_track && selTrackObj() ? selTrackObj().title : (sp.default || ''));
+
+  async function loadCoverReg() {
+    try { const r = await api('api/cover/styles'); if (r && r.styles && r.styles.length && r.formats && r.formats.length) covReg = r; } catch (e) {}
+    if (!covReg.formats.find(x => x.id === selFmt)) selFmt = covReg.default.format;
+    if (!covReg.styles.find(x => x.id === selStyle)) selStyle = covReg.default.style;
+    paintCover();
+  }
+  function paintPrev() {
+    const st = curStyle(), fm = curFmt(), tr = selTrackObj(), r = fm.w / fm.h, vals = coverFields();
+    const box = $('#covPrev'), land = r >= 1.2;
+    box.style.aspectRatio = fm.w + '/' + fm.h;
+    box.style.width = r < 1 ? 'min(100%,' + (52 * r).toFixed(1) + 'vh)' : (r > 1.2 ? '100%' : 'min(100%,52vh)');
+    box.style.setProperty('--cv', tr && tr.cover_url ? `url('${A(tr.cover_url)}')` : 'linear-gradient(135deg,#3b3b8f,#c0527a)');
+    const main = vals.caption || vals.title || '', sub = vals.date || vals.artist || '';
+    const txt = `<div class="tx" style="${land ? 'left:48%;right:6%;top:50%;transform:translateY(-50%);text-align:left' : 'left:6%;right:6%;top:' + (r < 1 ? 70 : 74) + '%'};font-family:${selFont && fonts.length ? `'${ffName(selFont)}',` : ''}var(--display)">${esc(main)}${sub ? '<small>' + esc(sub) + '</small>' : ''}</div>`;
+    const card = land ? '<div class="cd" style="left:7%;top:12%;height:76%"></div>'
+      : r < 1 ? '<div class="cd" style="left:15%;width:70%;top:17%"></div>' : '<div class="cd" style="left:20%;width:60%;top:9%"></div>';
+    const lines = st.needs_lines ? `<div class="ln" style="${land ? 'left:48%;right:6%;top:16%' : 'left:10%;right:10%;top:84%'}"><span style="width:90%"></span><span class="hi" style="width:70%"></span><span style="width:80%"></span></div>` : '';
+    const vid = st.preview ? `<video src="${esc(st.preview)}" autoplay muted loop playsinline></video>` : '';
+    box.innerHTML = `<div class="bg"></div>${card}${st.needs_lines && land ? '' : txt}${lines}${vid}`
+      + (comboStatus() === 'ready' ? '' : '<div class="soon"><span>Скоро · анимация в разработке</span></div>');
+    $('#styleDesc').textContent = st.desc || '';
+  }
+  function paintCover() {
+    if (!$('#fmtRow')) return;
+    const st = curStyle(), fm = curFmt(), tr = selTrackObj();
+    $('#fmtRow').innerHTML = covReg.formats.map(f => {
+      const wide = f.w >= f.h, w = wide ? 34 : Math.round(34 * f.w / f.h), h = wide ? Math.round(34 * f.h / f.w) : 34;
+      return `<button class="fmt ${f.id === fm.id ? 'on' : ''}" data-fm="${esc(f.id)}"><i style="width:${w}px;height:${h}px"></i><b>${esc(f.ratio)}</b><span>${esc(f.title)}</span></button>`;
+    }).join('');
+    $('#fmtHint').textContent = fm.hint || '';
+    const r = fm.w / fm.h, thf = r >= 1 ? `width:100%;aspect-ratio:${fm.w}/${fm.h}` : `height:100%;aspect-ratio:${fm.w}/${fm.h}`;
+    const cv = tr && tr.cover_url ? `url('${A(tr.cover_url)}')` : 'linear-gradient(135deg,#3b3b8f,#c0527a)';
+    $('#styleRow').innerHTML = covReg.styles.map(x => {
+      const ok = statusOf(x, fm.id) === 'ready';
+      return `<button class="sty ${x.id === st.id ? 'on' : ''}" data-sty="${esc(x.id)}"><div class="th"><div class="thf" style="${thf};--cv:${cv};${x.preview ? '' : 'opacity:' + (ok ? 1 : .55)}">${x.preview ? `<video src="${esc(x.preview)}" autoplay muted loop playsinline></video>` : ''}</div></div>
+        <div><b>${esc(x.title)}</b><div class="tag">${esc(x.tag || '')}</div></div><span class="bdg ${ok ? 'ok' : ''}">${ok ? 'готово' : 'скоро'}</span></button>`;
+    }).join('');
+    $('#fieldsBox').innerHTML = (st.fields || []).map(k => {
+      const sp = covReg.fields[k] || { label: k, max: 40 };
+      return `<label style="display:flex;flex-direction:column;gap:8px"><span class="lbl">${esc(sp.label)}</span>
+        <input class="inp" data-f="${esc(k)}" value="${esc(coverVal(k, sp))}" maxlength="${sp.max || 40}" placeholder="${esc(sp.placeholder || '')}" ${sp.upper ? 'style="text-transform:uppercase"' : ''}></label>`;
+    }).join('');
+    paintPrev();
+    if (selKind === 'cover') {
+      $('#hint').textContent = comboStatus() === 'ready'
+        ? 'Обложка трека оживает под выбранный фрагмент. Монтаж 4–6 минут, видео придёт в бот.'
+        : 'Этот стиль для выбранного формата ещё делаем. Готовые сейчас помечены «готово».';
+      if (!mountBtn.disabled) { mountBtn.textContent = mountLabel(); mountBtn.style.opacity = comboStatus() === 'ready' ? 1 : .55; }
+    }
+  }
+  $('#fmtRow').onclick = e => { const b = e.target.closest('[data-fm]'); if (!b) return; selFmt = b.dataset.fm; try { localStorage.setItem('le_cfmt', selFmt); } catch (err) {} paintCover(); };
+  $('#styleRow').onclick = e => { const b = e.target.closest('[data-sty]'); if (!b) return; selStyle = b.dataset.sty; try { localStorage.setItem('le_cstyle', selStyle); } catch (err) {} paintCover(); };
+  $('#fieldsBox').oninput = e => { const i = e.target.closest('[data-f]'); if (i) { covVals[i.dataset.f] = i.value; paintPrev(); } };
   $('#kindSeg').onclick = e => { const b = e.target.closest('[data-k]'); if (!b) return; selKind = b.dataset.k; paintKind(); };
 
   /* шрифты */
@@ -1297,6 +1414,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
     const b = e.target.closest('[data-fn]'); if (!b) return;
     selFont = b.dataset.fn; try { localStorage.setItem('le_font', selFont); } catch (err) {}
     $$('#fontChips [data-fn]').forEach(c => c.classList.toggle('on', c === b));
+    if (selKind === 'cover') paintPrev();
   };
   const askRights = () => new Promise(res => {
     const msg = 'Шрифт твой или у тебя есть права на его использование?';
@@ -1322,10 +1440,13 @@ $('#render').onclick = () => renderEdit().catch(err => {
     box.innerHTML = edits.length ? '<span class="lbl" style="margin-top:6px">Мои эдиты</span>' + edits.slice(0, 6).map(e => {
       const t = tracks.find(x => x.id === e.track_id), name = t ? '«' + esc(t.title) + '»' : '';
       const fn = (fonts.find(f => f.key === e.params.font) || {}).name;
-      const meta = e.params.kind === 'cover' ? 'анимация обложки' + (e.params.caption ? ' · ' + esc(e.params.caption) : '')
+      const isCov = e.params.kind === 'cover', cfm = isCov ? fmtById(e.params.format || '9x16') : null;
+      const cst = isCov ? (covReg.styles.find(x => x.id === e.params.style) || covReg.styles[0]) : null;
+      const cmain = isCov ? ((e.params.fields && (e.params.fields.caption || e.params.fields.title)) || e.params.caption) : '';
+      const meta = isCov ? 'обложка · ' + esc(cst.title) + ' · ' + esc(cfm.ratio) + (cmain ? ' · ' + esc(cmain) : '')
         : (e.params.mode === 'word' ? 'по слову' : 'строкой') + (e.params.bw ? ' · ч/б' : '') + (fn ? ' · ' + esc(fn) : '');
       if (e.status === 'done') return `<div class="card" style="padding:10px;display:flex;flex-direction:column;gap:8px">
-        <video src="${A(e.url)}" controls playsinline preload="metadata" style="width:100%;border-radius:12px;aspect-ratio:9/16;max-height:60vh;background:#000"></video>
+        <video src="${A(e.url)}" controls playsinline preload="metadata" style="width:${cfm && cfm.w >= cfm.h ? '100%' : 'min(100%,' + (60 * (cfm ? cfm.w / cfm.h : 9 / 16)).toFixed(1) + 'vh)'};align-self:center;border-radius:12px;aspect-ratio:${cfm ? cfm.w + '/' + cfm.h : '9/16'};background:#000"></video>
         <span class="mute">${name} · ${meta} · уже в боте</span></div>`;
       return `<div class="card mute">${name} · ${meta} — ${e.status === 'error' ? 'ошибка: ' + esc(e.error) : e.status === 'rendering' ? 'монтируем…' : 'в очереди…'}</div>`;
     }).join('') : '';
@@ -1374,9 +1495,10 @@ $('#render').onclick = () => renderEdit().catch(err => {
     baseGo(s);
     if (s === 'tracks') loadTracks().catch(e => toast(e.message));
     if (s === 'home') { loadTracks().catch(() => {}); loadEdits().catch(() => {}); }
-    if (s === 'studio') { loadTracks().catch(() => {}); loadFoot().catch(() => {}); loadEdits().catch(() => {}); loadFonts().catch(() => {}); }
+    if (s === 'studio') { loadTracks().catch(() => {}); loadFoot().catch(() => {}); loadEdits().catch(() => {}); loadFonts().catch(() => {}); loadCoverReg().catch(() => {}); }
   };
   loadTracks().then(() => loadEdits()).catch(() => {});
+  loadCoverReg().catch(() => {});
 })();
 </script>
 </body>

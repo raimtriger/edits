@@ -14,8 +14,8 @@ def main():
         words, segs = transcribe(args["audio"], args.get("lyrics"))
         print(json.dumps({"words": [[w.text, w.start, w.end] for w in words], "segs": segs}, ensure_ascii=False))
     elif cmd == "cover":
-        from .cover_anim import render_cover_anim
-        render_cover_anim(**args)
+        from .cover_styles import render_style
+        render_style(**args)
         print(json.dumps({"ok": True}))
     else:
         raise SystemExit(f"unknown command {cmd}")

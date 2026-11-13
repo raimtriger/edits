@@ -23,6 +23,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 
 from .engine import align, render
+from .engine import cover_styles
 from .tg import Bot
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -404,7 +405,10 @@ class EditIn(BaseModel):
     footage: str = "mix"
     font: str = "inter"
     kind: str = "edit"        # edit — эдит на футажах, cover — анимация обложки
-    caption: str = "ПРЕМЬЕРА"  # надпись для анимации обложки
+    caption: str = "ПРЕМЬЕРА"  # надпись (старый путь; новые клиенты шлют её же в fields)
+    style: str = cover_styles.DEFAULT_STYLE    # стиль анимации обложки, см. engine/cover_styles.py
+    format: str = cover_styles.DEFAULT_FORMAT  # формат видео: 9x16 / 16x9 / 1x1
+    fields: dict = {}                          # поля стиля: caption, artist, title, date
 
 
 @app.post("/api/edits")
@@ -412,8 +416,17 @@ def make_edit(body: EditIn, u=Depends(current_user)):
     t = q("SELECT * FROM tracks WHERE id=? AND user_id=?", (body.track_id, u["id"]), one=True)
     if not t or t["status"] != "ready":
         raise HTTPException(400, "трек ещё не готов")
-    if body.kind == "cover" and not (t["cover"] and Path(t["cover"]).exists()):
-        raise HTTPException(400, "сначала добавь обложку трека")
+    cover_params = {}
+    if body.kind == "cover":
+        if not (t["cover"] and Path(t["cover"]).exists()):
+            raise HTTPException(400, "сначала добавь обложку трека")
+        err = cover_styles.check_request(body.style, body.format)      # до списания бесплатного эдита
+        if err:
+            raise HTTPException(400, err)
+        raw = dict(body.fields or {})
+        raw.setdefault("caption", body.caption)
+        cover_params = {"style": body.style, "format": body.format,
+                        "fields": cover_styles.clean_fields(body.style, raw, t["title"])}
     if not u["is_owner"]:
         if u["free_left"] <= 0:
             raise HTTPException(402, "бесплатные эдиты закончились")
@@ -422,11 +435,18 @@ def make_edit(body: EditIn, u=Depends(current_user)):
     font = body.font if (body.font in FONTS or user_font(u["id"], body.font)) else "inter"
     params = {"mode": body.mode if body.mode in ("line", "word") else "line", "bw": body.bw,
               "footage": body.footage, "font": font, "watermark": not u["is_owner"],
-              "kind": "cover" if body.kind == "cover" else "edit", "caption": body.caption.strip().upper()[:24]}
+              "kind": "cover" if body.kind == "cover" else "edit", "caption": body.caption.strip().upper()[:24],
+              **cover_params}
     q("INSERT INTO edits(id,user_id,track_id,params,status,created) VALUES(?,?,?,?,?,?)",
       (eid, u["id"], t["id"], json.dumps(params), "queued", time.time()))
     wake.set()
     return edit_json(q("SELECT * FROM edits WHERE id=?", (eid,), one=True))
+
+
+@app.get("/api/cover/styles")
+def cover_registry():
+    """Форматы, стили и поля анимации обложки: аппка строит экран «Обложка» из этого ответа."""
+    return cover_styles.public_registry()
 
 
 @app.get("/api/edits")
@@ -539,9 +559,15 @@ def process_cover(e: sqlite3.Row, t: sqlite3.Row, p: dict):
         font_path = str(FONTS_DIR / f"{fkey}.ttf")
     out = DATA / "edits" / f"{e['id']}.mp4"
     t0 = time.time()
-    run_job("cover", {"cover": t["cover"], "audio": t["audio"], "out": str(out), "start": t["frag_start"],
-                      "dur": t["frag_end"] - t["frag_start"], "title": p.get("caption", "ПРЕМЬЕРА"),
-                      "font_path": font_path}, timeout=3600)
+    style = p.get("style") or cover_styles.DEFAULT_STYLE                     # старые заявки без style — классика 9:16
+    fmt = p.get("format") or cover_styles.DEFAULT_FORMAT
+    fields = p.get("fields") or {"caption": p.get("caption") or "ПРЕМЬЕРА"}
+    lines = []
+    if cover_styles.STYLE_BY_ID.get(style, {}).get("needs_lines"):
+        lines = [{"start": l["start"], "end": l["end"], "text": l["text"]} for l in json.loads(t["lines"])]
+    run_job("cover", {"style": style, "format": fmt, "fields": fields, "lines": lines,
+                      "cover": t["cover"], "audio": t["audio"], "out": str(out), "start": t["frag_start"],
+                      "dur": t["frag_end"] - t["frag_start"], "font_path": font_path}, timeout=3600)
     q("UPDATE edits SET status='done', video=? WHERE id=?", (str(out), e["id"]))
     chat = tg_of(e["user_id"])
     if bot and chat:
