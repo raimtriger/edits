@@ -434,6 +434,9 @@ input[type=range]{accent-color:var(--acc)}
   <button class="card row" data-go="plans" style="justify-content:space-between;text-align:left;width:100%">
     <span style="display:flex;flex-direction:column;gap:4px"><span class="lbl" style="color:var(--acc)" id="pPlan">Доступ «Основатель»</span><span class="mute" style="font-size:14px" id="pPlanSub">Всё открыто · бесплатно</span></span>
     <span style="font-weight:600;font-size:13px">Сменить</span></button>
+  <button class="card row" id="dailyBtn" style="justify-content:space-between;text-align:left;width:100%;gap:12px">
+    <span style="display:flex;flex-direction:column;gap:4px"><span style="font-size:15px;font-weight:700">Ежедневный эдит</span><span class="mute" style="font-size:13px">Каждый день в 10:00 по Москве новый эдит на один из твоих треков придёт в бот</span></span>
+    <span id="dailySw" style="flex-shrink:0;width:48px;height:28px;border-radius:14px;background:var(--card2);position:relative;transition:background .2s"><i style="position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:transform .2s"></i></span></button>
   <div class="card demo-only" style="display:flex;flex-direction:column;gap:10px">
     <span style="font-size:15px;font-weight:700">Ссылка для фанатов</span>
     <span class="mute">Фанаты бесплатно монтируют эдиты на твой трек. В каждом — твоя пресейв-ссылка.</span>
@@ -1040,7 +1043,17 @@ $('#render').onclick = () => renderEdit().catch(err => {
     $('#pPlanSub').textContent = me.owner ? 'Безлимит · бесплатно' : 'Осталось эдитов: ' + me.free_left;
     $('#homePill').textContent = me.owner ? 'Основатель · безлимит' : 'Бесплатно · осталось ' + me.free_left;
     $('#homeHello').textContent = 'Привет, ' + first + '!';
+    paintDaily();
   }
+  function paintDaily() {
+    const sw = $('#dailySw'); if (!sw || !me) return;
+    sw.style.background = me.daily ? 'var(--acc)' : 'var(--card2)';
+    sw.firstElementChild.style.transform = me.daily ? 'translateX(20px)' : 'none';
+  }
+  $('#dailyBtn') && ($('#dailyBtn').onclick = async () => {
+    try { const r = await api('api/daily', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on: !me.daily }) });
+      me.daily = r.daily; paintDaily(); haptic(); toast(me.daily ? 'Включено: первый эдит придёт завтра в 10:00' : 'Выключено'); } catch (e) { toast(e.message); }
+  });
   try { await loadMe(); } catch (e) { toast(e.message); return; }
   $('#hint').textContent = 'Отрывок — припев, его нашли сами. Монтаж занимает 2–4 минуты, готовое видео придёт в бот.';
   $('#mount').textContent = 'Смонтировать';
@@ -1056,7 +1069,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
     const parts = [];
     if (busy) {
       const t = tracks.find(x => x.id === busy.track_id);
-      parts.push(`<div class="card row" style="gap:12px"><span class="step run" style="width:auto"><i></i></span><span style="display:flex;flex-direction:column;gap:2px"><b style="font-size:15px">Монтируем «${esc(t ? t.title : '')}»</b><span class="mute">2–4 минуты · видео придёт в бот</span></span></div>`);
+      parts.push(`<div class="card row" style="gap:12px"><span class="step run" style="width:auto"><i></i></span><span style="display:flex;flex-direction:column;gap:2px"><b style="font-size:15px">Монтируем «${esc(t ? t.title : '')}»</b><span class="mute">${busy.queue && busy.queue.ahead ? `в очереди: впереди ${busy.queue.ahead} · ~${busy.queue.eta_min} мин` : `~${busy.queue ? busy.queue.eta_min : 3} мин`} · видео придёт в бот</span></span></div>`);
     }
     if (done) {
       const t = tracks.find(x => x.id === done.track_id);

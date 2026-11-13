@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import datetime
 import json
 import logging
 import tempfile
@@ -82,6 +83,11 @@ with lock:
         db.execute("ALTER TABLE tracks ADD COLUMN cover TEXT")  # обложка трека
     if "instrumental" not in cols:
         db.execute("ALTER TABLE tracks ADD COLUMN instrumental INTEGER DEFAULT 0")  # композиция без слов
+    ucols = [r[1] for r in db.execute("PRAGMA table_info(users)")]
+    if "daily" not in ucols:
+        db.execute("ALTER TABLE users ADD COLUMN daily INTEGER DEFAULT 0")      # ежедневный эдит включён
+    if "daily_last" not in ucols:
+        db.execute("ALTER TABLE users ADD COLUMN daily_last TEXT")              # дата последнего ежедневного эдита (МСК)
     db.commit()
 
 
@@ -151,14 +157,32 @@ def track_json(t: sqlite3.Row) -> dict:
 
 
 def edit_json(e: sqlite3.Row) -> dict:
-    return {"id": e["id"], "track_id": e["track_id"], "status": e["status"], "error": e["error"],
-            "params": json.loads(e["params"]), "url": f"media/{e['id']}.mp4" if e["status"] == "done" else None,
-            "created": e["created"]}
+    out = {"id": e["id"], "track_id": e["track_id"], "status": e["status"], "error": e["error"],
+           "params": json.loads(e["params"]), "url": f"media/{e['id']}.mp4" if e["status"] == "done" else None,
+           "created": e["created"]}
+    if e["status"] in ("queued", "rendering"):
+        # сколько заявок впереди и примерное ожидание: анимация обложки ~6 мин, обычный эдит ~3 мин
+        ahead = q("SELECT params FROM edits WHERE status IN ('queued','rendering') AND created<? AND id!=?",
+                  (e["created"], e["id"]))
+        sec = sum(360 if '"kind": "cover"' in a["params"] else 180 for a in ahead)
+        own = 360 if out["params"].get("kind") == "cover" else 180
+        out["queue"] = {"ahead": len(ahead), "eta_min": max(1, round((sec + own) / 60))}
+    return out
 
 
 @app.get("/api/me")
 def me(u=Depends(current_user)):
-    return {"name": u["name"], "owner": bool(u["is_owner"]), "free_left": u["free_left"]}
+    return {"name": u["name"], "owner": bool(u["is_owner"]), "free_left": u["free_left"], "daily": bool(u["daily"])}
+
+
+class DailyIn(BaseModel):
+    on: bool
+
+
+@app.post("/api/daily")
+def set_daily(body: DailyIn, u=Depends(current_user)):
+    q("UPDATE users SET daily=? WHERE id=?", (1 if body.on else 0, u["id"]))
+    return {"daily": body.on}
 
 
 @app.get("/api/footage")
@@ -437,6 +461,10 @@ def make_edit(body: EditIn, u=Depends(current_user)):
         cover_params = {"style": body.style, "format": body.format,
                         "fields": cover_styles.clean_fields(body.style, raw, t["title"])}
     if not u["is_owner"]:
+        if q("SELECT 1 FROM edits WHERE user_id=? AND status IN ('queued','rendering')", (u["id"],), one=True):
+            raise HTTPException(429, "один эдит уже монтируется — дождись его, видео придёт в бот")
+        if q("SELECT COUNT(*) c FROM edits WHERE status IN ('queued','rendering')", one=True)["c"] >= QUEUE_MAX:
+            raise HTTPException(503, "сейчас много заявок — попробуй через несколько минут")
         if u["free_left"] <= 0:
             raise HTTPException(402, "бесплатные эдиты закончились")
         q("UPDATE users SET free_left=free_left-1 WHERE id=?", (u["id"],))
@@ -478,6 +506,14 @@ def health():
 
 # ---------------- фоновая очередь ----------------
 wake = threading.Event()
+QUEUE_MAX = 15          # больше заявок в очереди не берём
+KEEP_VIDEO_DAYS = 3     # готовые видео уже в боте — файлы старше удаляем
+
+
+def fail_edit(e: sqlite3.Row, msg: str):
+    """Ошибка монтажа: помечаем заявку и возвращаем списанный бесплатный эдит."""
+    q("UPDATE edits SET status='error', error=? WHERE id=?", (msg[:300], e["id"]))
+    q("UPDATE users SET free_left=free_left+1 WHERE id=? AND is_owner=0", (e["user_id"],))
 
 
 def tg_of(user_id: int) -> int | None:
@@ -576,7 +612,7 @@ def process_cover(e: sqlite3.Row, t: sqlite3.Row, p: dict):
         lines = [{"start": l["start"], "end": l["end"], "text": l["text"]} for l in json.loads(t["lines"])]
     run_job("cover", {"style": style, "format": fmt, "fields": fields, "lines": lines,
                       "cover": t["cover"], "audio": t["audio"], "out": str(out), "start": t["frag_start"],
-                      "dur": t["frag_end"] - t["frag_start"], "font_path": font_path}, timeout=3600)
+                      "dur": t["frag_end"] - t["frag_start"], "font_path": font_path}, timeout=1200)
     q("UPDATE edits SET status='done', video=? WHERE id=?", (str(out), e["id"]))
     chat = tg_of(e["user_id"])
     if bot and chat:
@@ -644,9 +680,65 @@ def worker():
                     process_edit(e)
                 except Exception as ex:
                     log.exception("edit %s", e["id"])
-                    q("UPDATE edits SET status='error', error=? WHERE id=?", (str(ex)[:300], e["id"]))
+                    fail_edit(e, str(ex))
                 continue
             break
+
+
+def daily_tick():
+    """Раз в сутки (после 10:00 МСК) ставим в очередь новый эдит тем, кто включил «Ежедневный эдит»."""
+    from zoneinfo import ZoneInfo
+    now = datetime.datetime.now(ZoneInfo("Europe/Moscow"))
+    if now.hour < 10:
+        return
+    today = now.strftime("%Y-%m-%d")
+    for u in q("SELECT * FROM users WHERE daily=1 AND (daily_last IS NULL OR daily_last!=?)", (today,)):
+        if q("SELECT 1 FROM edits WHERE user_id=? AND status IN ('queued','rendering')", (u["id"],), one=True):
+            continue                                                    # дождёмся, пока закончится текущий
+        if not u["is_owner"] and u["free_left"] <= 0:
+            q("UPDATE users SET daily_last=? WHERE id=?", (today, u["id"]))
+            continue
+        # трек, на который эдитов меньше всего (чтобы по кругу шли разные), среди готовых
+        t = q("""SELECT t.* FROM tracks t WHERE t.user_id=? AND t.status='ready'
+                 ORDER BY (SELECT COUNT(*) FROM edits e WHERE e.track_id=t.id), t.created DESC LIMIT 1""", (u["id"],), one=True)
+        if not t:
+            continue
+        last = q("SELECT params FROM edits WHERE user_id=? AND status='done' ORDER BY created DESC LIMIT 1", (u["id"],), one=True)
+        font = (json.loads(last["params"]).get("font") if last else None) or "inter"
+        params = {"mode": random.choice(["line", "word"]), "bw": random.random() < 0.2, "footage": "mix", "font": font,
+                  "watermark": not u["is_owner"], "kind": "edit", "caption": "", "daily": True}
+        if not u["is_owner"]:
+            q("UPDATE users SET free_left=free_left-1 WHERE id=?", (u["id"],))
+        q("INSERT INTO edits(id,user_id,track_id,params,status,created) VALUES(?,?,?,?,?,?)",
+          (uuid.uuid4().hex, u["id"], t["id"], json.dumps(params), "queued", time.time()))
+        q("UPDATE users SET daily_last=? WHERE id=?", (today, u["id"]))
+        wake.set()
+        log.info("ежедневный эдит: user %s, трек %s", u["id"], t["id"])
+
+
+def cleanup_videos():
+    cutoff = time.time() - KEEP_VIDEO_DAYS * 86400
+    n = 0
+    for p in (DATA / "edits").glob("*.mp4"):
+        try:
+            if p.stat().st_mtime < cutoff:
+                p.unlink(); n += 1
+        except OSError:
+            pass
+    if n:
+        log.info("удалено старых видео: %d", n)
+
+
+def housekeeping():
+    last_clean = 0.0
+    while True:
+        try:
+            daily_tick()
+            if time.time() - last_clean > 3600:
+                cleanup_videos(); last_clean = time.time()
+        except Exception:
+            log.exception("housekeeping")
+        time.sleep(60)
 
 
 @app.on_event("startup")
@@ -654,9 +746,11 @@ def _startup():
     # задачи, прерванные перезапуском, — обратно в очередь
     q("UPDATE tracks SET status='queued' WHERE status='processing'")
     # монтаж, прерванный перезапуском (например, не хватило памяти), не повторяем по кругу
-    q("UPDATE edits SET status='error', error='прервано — попробуй ещё раз' WHERE status='rendering'")
+    for e in q("SELECT * FROM edits WHERE status='rendering'"):
+        fail_edit(e, "прервано — попробуй ещё раз")
     threading.Thread(target=worker, daemon=True, name="worker").start()
     threading.Thread(target=refresh_tgjs, daemon=True, name="tgjs").start()
+    threading.Thread(target=housekeeping, daemon=True, name="housekeeping").start()
     if bot:
         bot.setup_menu_button()
         bot.start_polling()
