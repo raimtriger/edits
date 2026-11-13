@@ -493,7 +493,7 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 /* ---------- адрес API ----------
    На нашем сервере страница и API на одном хосте. На GitHub Pages страница отдаётся отдельно
    (из России Cloudflare обрезает большие ответы), а API остаётся на сервере в Амстердаме. */
-const API_BASE = ['app.ludusedits.ru', 'api.duddl.ru', 'localhost', '127.0.0.1'].includes(location.hostname) ? '' : 'https://app.ludusedits.ru/';
+const API_BASE = ['app.ludusedits.ru', 'api.duddl.ru', 'localhost', '127.0.0.1'].includes(location.hostname) ? '' : 'https://146-103-114-92.sslip.io/';
 const A = p => /^(https?:|blob:|data:)/.test(p) ? p : API_BASE + p;
 
 /* ---------- навигация ---------- */
