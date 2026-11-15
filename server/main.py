@@ -60,7 +60,7 @@ for d in (DATA / "tracks", DATA / "edits", DATA / "covers", DATA / "fonts"):
     d.mkdir(parents=True, exist_ok=True)
 FOOTAGE.mkdir(parents=True, exist_ok=True)
 
-FOOTAGE_NAMES = {"night": "Ночной город", "love": "Девушки и пары", "nature": "Природа",
+FOOTAGE_NAMES = {"city": "Город", "road": "Дорога", "night": "Ночной город", "love": "Девушки и пары", "nature": "Природа",
                  "bokeh": "Боке и огни", "cinema": "Кино · чистые права", "stock": "Стоки",
                  "mix": "Микс (всё)"}
 
