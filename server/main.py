@@ -12,6 +12,7 @@ import tempfile
 import os
 from urllib.parse import urlsplit
 import random
+import re
 import sqlite3
 import threading
 import time
@@ -435,6 +436,7 @@ class EditIn(BaseModel):
     track_id: str
     mode: str = "line"
     bw: bool = False
+    color: str = "FFFFFF"     # цвет текста эдита, hex RRGGBB
     footage: str = "mix"
     font: str = "inter"
     kind: str = "edit"        # edit — эдит на футажах, cover — анимация обложки
@@ -471,6 +473,7 @@ def make_edit(body: EditIn, u=Depends(current_user)):
     eid = uuid.uuid4().hex
     font = body.font if (body.font in FONTS or user_font(u["id"], body.font)) else "inter"
     params = {"mode": body.mode if body.mode in ("line", "word") else "line", "bw": body.bw,
+              "color": body.color if re.fullmatch(r"[0-9A-Fa-f]{6}", body.color or "") else "FFFFFF",
               "footage": body.footage, "font": font, "watermark": not u["is_owner"],
               "kind": "cover" if body.kind == "cover" else "edit", "caption": body.caption.strip().upper()[:24],
               **cover_params}
@@ -673,7 +676,7 @@ def process_edit(e: sqlite3.Row):
         if uf and Path(uf["path"]).exists():
             os.symlink(uf["path"], Path(tmp_fonts.name) / ("user" + Path(uf["path"]).suffix))
             family = uf["family"]
-    st = render.Style(mode=p["mode"], bw=p["bw"], seed=random.randint(1, 10**9), font=family,
+    st = render.Style(mode=p["mode"], bw=p["bw"], color=p.get("color", "FFFFFF"), seed=random.randint(1, 10**9), font=family,
                       font_size=int(72 * scale), fonts_dir=tmp_fonts.name,
                       watermark="LUDUS EDITS" if p.get("watermark") else None)
     t0 = time.time()

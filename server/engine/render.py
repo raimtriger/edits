@@ -30,6 +30,7 @@ class Style:
     font: str = "Inter Light"   # имя семейства (fontconfig)
     font_size: int = 72
     bw: bool = False            # чёрно-белый
+    color: str = "FFFFFF"       # цвет текста, hex RRGGBB
     cut: float = 1.0            # средняя длина склейки, сек
     darken: float = 0.10        # затемнение под текст (0..0.4)
     show_next: bool = True      # показывать следующую строку блекло (режим line)
@@ -73,6 +74,14 @@ def list_footage(folder: Path) -> list[Path]:
     return sorted(p for p in folder.rglob("*") if p.suffix.lower() in VIDEO_EXT)
 
 
+def _ass_rgb(hexrgb: str, alpha: str = "00") -> str:
+    """RRGGBB -> &HAABBGGRR для libass."""
+    h = (hexrgb or "FFFFFF").lstrip("#").upper()
+    if len(h) != 6 or any(c not in "0123456789ABCDEF" for c in h):
+        h = "FFFFFF"
+    return f"&H{alpha}{h[4:6]}{h[2:4]}{h[0:2]}"
+
+
 def _ass_time(t: float) -> str:
     t = max(0.0, t)
     h, rem = divmod(t, 3600)
@@ -98,9 +107,9 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Main,{style.font},{fs},&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,0,0,0,0,100,100,0,0,1,0,2,5,120,120,0,1
-Style: Next,{style.font},{int(fs*0.8)},&H70FFFFFF,&H70FFFFFF,&H00000000,&H64000000,0,0,0,0,100,100,0,0,1,0,1,5,140,140,0,1
-Style: Word,{style.font},{int(fs*1.45)},&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,0,0,0,0,100,100,0,0,1,0,2,5,80,80,0,1
+Style: Main,{style.font},{fs},{_ass_rgb(style.color)},{_ass_rgb(style.color)},&H00000000,&H64000000,0,0,0,0,100,100,0,0,1,0,2,5,120,120,0,1
+Style: Next,{style.font},{int(fs*0.8)},{_ass_rgb(style.color, "70")},{_ass_rgb(style.color, "70")},&H00000000,&H64000000,0,0,0,0,100,100,0,0,1,0,1,5,140,140,0,1
+Style: Word,{style.font},{int(fs*1.45)},{_ass_rgb(style.color)},{_ass_rgb(style.color)},&H00000000,&H64000000,0,0,0,0,100,100,0,0,1,0,2,5,80,80,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
