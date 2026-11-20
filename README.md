@@ -38,3 +38,6 @@ bash /opt/edits/deploy/uninstall.sh
 ## Футажи
 
 Видео кладутся в `/opt/edits/footage/<категория>/`: `night`, `love`, `nature`, `bokeh`, `cinema`, `stock`.
+
+### Выбор кадров вручную
+`GET /api/footage/{key}/clips` — список клипов категории, `GET /api/footage/thumb/{id}` — миниатюра (ffmpeg под `nice`, кэш в `data/thumbs/`, считается один раз на клип). `POST /api/edits` принимает `clips: [id, ...]` (до 30): монтаж идёт только на них. Избранное хранится на телефоне.

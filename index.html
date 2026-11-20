@@ -300,7 +300,8 @@ input[type=range]{accent-color:var(--acc)}
   <div id="tplBlock" class="live-only" style="flex-direction:column;gap:8px"><span class="lbl">Мои шаблоны</span>
     <div id="tplRow" style="display:flex;flex-wrap:wrap;gap:8px"></div>
     <div id="recRow" style="display:none;flex-wrap:wrap;gap:8px;align-items:center"></div></div>
-  <div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Футажи</span><div id="foot" style="display:flex;flex-wrap:wrap;gap:8px"></div></div>
+  <div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Футажи</span><div id="foot" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+    <button class="chip live-only" id="pickBtn" style="height:42px;border:1.5px dashed #3A3A40;background:transparent;justify-content:center">Выбрать кадры вручную</button></div>
   <div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Текст</span>
     <div class="grid3"><button class="tog on" data-m="line">Строкой</button><button class="tog" data-m="word">По слову</button><button class="tog" id="bw">Ч/Б</button></div>
     <div class="live-only" style="flex-direction:column;gap:8px;margin-top:6px"><span class="lbl">Цвет текста</span>
@@ -481,6 +482,13 @@ input[type=range]{accent-color:var(--acc)}
 </section>
 
 </main>
+<div id="pick" style="display:none;position:fixed;inset:0;z-index:50;background:#0B0B0C;flex-direction:column">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;gap:8px">
+    <div class="seg" id="pickTabs" style="grid-template-columns:1fr 1fr;flex:1"><button class="on" data-pt="cat">Категория</button><button data-pt="fav">★ Избранное</button></div>
+    <button id="pickClose" class="chip" style="background:var(--acc);color:#0B0B0C">Готово · <span id="pickCnt">0</span></button></div>
+  <div id="pickGrid" style="flex:1;overflow:auto;display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:0 10px 16px;align-content:start"></div>
+</div>
+
 
 <nav id="nav">
   <button class="on" data-go="home"><i></i>Сегодня</button>
@@ -1319,7 +1327,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
     mountBtn.disabled = true; mountBtn.style.opacity = .6; mountBtn.textContent = 'Отправляем…'; mountMsg.textContent = '';
     try {
       await api('api/edits', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ track_id: selTrack, mode, bw: $('#bw').classList.contains('on'), color: selColor, footage: selFoot, font: selFont,
+        body: JSON.stringify({ track_id: selTrack, mode, bw: $('#bw').classList.contains('on'), color: selColor, footage: selFoot, clips: selClips, font: selFont,
           kind: selKind, caption: (cf.caption || 'ПРЕМЬЕРА').toUpperCase(), style: selStyle, format: selFmt, fields: cf }) });
       try { TG && TG.HapticFeedback && TG.HapticFeedback.notificationOccurred('success'); } catch (e) {}
       if (selKind !== 'cover') pushRecent();
@@ -1521,6 +1529,39 @@ $('#render').onclick = () => renderEdit().catch(err => {
     const a = lsGet('le_recent').filter(x => JSON.stringify(x) !== key); a.unshift(o); lsSet('le_recent', a.slice(0, 5)); paintTpl();
   }
   paintTpl();
+
+
+  /* выбор кадров вручную + избранное (на телефоне) */
+  let selClips = [], pickTab = 'cat', pickList = [];
+  const favs = () => lsGet('le_favclips');
+  const paintPickBtn = () => { $('#pickBtn').textContent = selClips.length ? 'Выбрано кадров: ' + selClips.length + ' · изменить' : 'Выбрать кадры вручную'; };
+  function paintPick() {
+    $('#pickCnt').textContent = selClips.length;
+    $$('#pickTabs button').forEach(b => b.classList.toggle('on', b.dataset.pt === pickTab));
+    const ids = pickTab === 'fav' ? favs() : pickList.map(c => c.id);
+    $('#pickGrid').innerHTML = ids.length ? ids.map(id => `<div data-cl="${id}" style="position:relative;aspect-ratio:9/16;border-radius:12px;overflow:hidden;background:#141416;outline:${selClips.includes(id) ? '3px solid var(--acc)' : 'none'};outline-offset:-3px">
+        <img loading="lazy" src="${A('api/footage/thumb/' + id)}" style="width:100%;height:100%;object-fit:cover" alt="">
+        <span data-fv="${id}" style="position:absolute;top:4px;right:4px;width:30px;height:30px;border-radius:50%;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;font-size:16px;color:${favs().includes(id) ? '#FFD84A' : '#fff'}">★</span>
+        ${selClips.includes(id) ? `<span style="position:absolute;left:6px;bottom:6px;background:var(--acc);color:#0B0B0C;border-radius:999px;font-size:12px;font-weight:700;padding:2px 8px">${selClips.indexOf(id) + 1}</span>` : ''}</div>`).join('')
+      : `<div class="mute" style="grid-column:1/-1;padding:30px 10px;text-align:center">${pickTab === 'fav' ? 'Тапни ★ на кадре, чтобы добавить в избранное' : 'В этой категории пока нет кадров'}</div>`;
+  }
+  $('#pickBtn').onclick = async () => {
+    $('#pick').style.display = 'flex'; pickTab = 'cat'; $('#pickGrid').innerHTML = '<div class="mute" style="grid-column:1/-1;padding:30px;text-align:center">Загружаем…</div>';
+    try { pickList = await api('api/footage/' + encodeURIComponent(selFoot) + '/clips'); } catch (e) { pickList = []; toast(e.message); }
+    paintPick();
+  };
+  $('#pickClose').onclick = () => { $('#pick').style.display = 'none'; paintPickBtn(); };
+  $('#pickTabs').onclick = e => { const b = e.target.closest('[data-pt]'); if (b) { pickTab = b.dataset.pt; paintPick(); } };
+  $('#pickGrid').onclick = e => {
+    const fv = e.target.closest('[data-fv]');
+    if (fv) { e.stopPropagation(); const a = favs(), i = a.indexOf(fv.dataset.fv); if (i < 0) a.unshift(fv.dataset.fv); else a.splice(i, 1); lsSet('le_favclips', a.slice(0, 300)); paintPick(); return; }
+    const c = e.target.closest('[data-cl]'); if (!c) return;
+    const id = c.dataset.cl, i = selClips.indexOf(id);
+    if (i >= 0) selClips.splice(i, 1); else if (selClips.length >= 30) return toast('Максимум 30 кадров'); else selClips.push(id);
+    paintPick();
+  };
+  $('#foot').addEventListener('click', e => { if (e.target.closest('[data-fk]') && selClips.length) { selClips = []; paintPickBtn(); toast('Выбор кадров сброшен — взяли категорию'); } });
+  paintPickBtn();
 
   async function loadEdits() {
     edits = await api('api/edits'); renderHome();

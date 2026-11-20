@@ -14,6 +14,7 @@ from urllib.parse import urlsplit
 import random
 import re
 import sqlite3
+import subprocess
 import threading
 import time
 import uuid
@@ -194,6 +195,45 @@ def footage_list(u=Depends(current_user)):
         if n:
             out.append({"key": key, "name": name, "count": n})
     return out
+
+
+_clip_idx = {"t": 0.0, "map": {}}
+
+
+def clip_index() -> dict:
+    """id клипа (sha1 относительного пути) -> Path. Кэш на 60 с, чтобы не обходить папку на каждый запрос."""
+    if time.time() - _clip_idx["t"] > 60:
+        import hashlib
+        _clip_idx["map"] = {hashlib.sha1(str(c.relative_to(FOOTAGE)).encode()).hexdigest()[:12]: c
+                            for c in render.list_footage(FOOTAGE)}
+        _clip_idx["t"] = time.time()
+    return _clip_idx["map"]
+
+
+@app.get("/api/footage/{key}/clips")
+def footage_clips(key: str, u=Depends(current_user)):
+    folder = FOOTAGE if key == "mix" else FOOTAGE / key
+    if key != "mix" and (key not in FOOTAGE_NAMES or not folder.is_dir()):
+        raise HTTPException(404)
+    inv = {v: k for k, v in clip_index().items()}
+    return [{"id": inv[c], "name": c.stem[:40]} for c in render.list_footage(folder) if c in inv][:400]
+
+
+@app.get("/api/footage/thumb/{cid}")
+def footage_thumb(cid: str):
+    src = clip_index().get(cid)
+    if not src:
+        raise HTTPException(404)
+    th = DATA / "thumbs" / f"{cid}.jpg"
+    if not th.exists():
+        th.parent.mkdir(parents=True, exist_ok=True)
+        tmp = th.with_suffix(".tmp.jpg")
+        r = subprocess.run(["nice", "-n", "15", "ffmpeg", "-v", "error", "-y", "-ss", "1", "-i", str(src), "-frames:v", "1",
+                            "-vf", "scale=-2:320", "-q:v", "5", str(tmp)], capture_output=True, timeout=30)
+        if r.returncode != 0 or not tmp.exists():
+            raise HTTPException(404)
+        tmp.replace(th)
+    return FileResponse(th, headers={"Cache-Control": "max-age=604800"})
 
 
 def user_font(u_id: int, key: str):
@@ -438,6 +478,7 @@ class EditIn(BaseModel):
     bw: bool = False
     color: str = "FFFFFF"     # цвет текста эдита, hex RRGGBB
     footage: str = "mix"
+    clips: list[str] = []      # свой выбор кадров (id из /api/footage/{key}/clips); пусто — случайные из категории
     font: str = "inter"
     kind: str = "edit"        # edit — эдит на футажах, cover — анимация обложки
     caption: str = "ПРЕМЬЕРА"  # надпись (старый путь; новые клиенты шлют её же в fields)
@@ -474,7 +515,7 @@ def make_edit(body: EditIn, u=Depends(current_user)):
     font = body.font if (body.font in FONTS or user_font(u["id"], body.font)) else "inter"
     params = {"mode": body.mode if body.mode in ("line", "word") else "line", "bw": body.bw,
               "color": body.color if re.fullmatch(r"[0-9A-Fa-f]{6}", body.color or "") else "FFFFFF",
-              "footage": body.footage, "font": font, "watermark": not u["is_owner"],
+              "footage": body.footage, "clips": [c for c in body.clips if c in clip_index()][:30], "font": font, "watermark": not u["is_owner"],
               "kind": "cover" if body.kind == "cover" else "edit", "caption": body.caption.strip().upper()[:24],
               **cover_params}
     q("INSERT INTO edits(id,user_id,track_id,params,status,created) VALUES(?,?,?,?,?,?)",
@@ -657,6 +698,9 @@ def process_edit(e: sqlite3.Row):
         return process_cover(e, t, p)
     folder = FOOTAGE / p["footage"] if p["footage"] != "mix" else FOOTAGE
     clips = render.list_footage(folder) or render.list_footage(FOOTAGE)
+    picked = [clip_index()[c] for c in (p.get("clips") or []) if c in clip_index()]
+    if picked:
+        clips = picked
     if not clips:
         raise RuntimeError("в библиотеке нет футажей — положи видео в /opt/edits/footage/")
     lines = [render.Line(l["start"], l["end"], l["text"]) for l in json.loads(t["lines"])]
