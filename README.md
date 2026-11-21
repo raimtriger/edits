@@ -41,3 +41,7 @@ bash /opt/edits/deploy/uninstall.sh
 
 ### Выбор кадров вручную
 `GET /api/footage/{key}/clips` — список клипов категории, `GET /api/footage/thumb/{id}` — миниатюра (ffmpeg под `nice`, кэш в `data/thumbs/`, считается один раз на клип). `POST /api/edits` принимает `clips: [id, ...]` (до 30): монтаж идёт только на них. Избранное хранится на телефоне.
+
+### Анимации обложки
+Реестр: `server/engine/cover_styles.py`. Готово: «Классика» (1080×1920) и «Сияние» (`cover_glow.py`, 720×1280, до 15 с, взмахи карточки по тактам трека, волна яркости по буквам).
+Локальный тест: `python -m server.engine.cover_glow cover.jpg track.mp3 out.mp4 0 15 "Название" "(prod. by …)" "Артист"`.

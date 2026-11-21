@@ -36,6 +36,7 @@ FIELDS = {
     "caption": {"label": "Надпись", "default": "ПРЕМЬЕРА", "max": 24, "upper": True},
     "title": {"label": "Название трека", "default": "", "max": 40, "upper": False, "from_track": True},
     "artist": {"label": "Артист", "default": "", "max": 32, "upper": False},
+    "subtitle": {"label": "Подзаголовок", "default": "", "placeholder": "(prod. by …)", "max": 40, "upper": False},
     "date": {"label": "Дата релиза", "default": "", "placeholder": "18 НОЯБРЯ", "max": 16, "upper": True},
 }
 
@@ -43,6 +44,10 @@ FIELDS = {
 # status у формата: "ready" — рендерится, "soon" — заготовка, аппка показывает «скоро», сервер такую заявку не берёт.
 # Названия и описания — рабочие, меняй свободно (аппка берёт их отсюда).
 STYLES = [
+    {"id": "glow", "title": "Сияние", "tag": "Релиз · 15 с",
+     "desc": "Обложка качается в такт трека, сверху звезда, под ней название, подзаголовок и артист с бегущей волной яркости. Фон — размытая обложка.",
+     "fields": ["title", "subtitle", "artist"], "needs_lines": False, "preview": None,
+     "formats": {"9x16": "ready", "16x9": "soon", "1x1": "soon"}},
     {"id": "premiere_classic", "title": "Классика", "tag": "Премьера",
      "desc": "Обложка влетает с 3D-поворотом, пульсирует под бит, надпись набирается по буквам.",
      "fields": ["caption"], "needs_lines": False, "preview": None,
@@ -72,9 +77,17 @@ def _render_classic(*, cover, audio, out, start, dur, font_path, fmt, fields, li
     render_cover_anim(cover, audio, out, start, dur, title=fields.get("caption") or "ПРЕМЬЕРА", font_path=font_path)
 
 
+def _render_glow(*, cover, audio, out, start, dur, font_path, fmt, fields, lines):
+    """«Сияние»: 720x1280, до 15 с (размер фиксирован — как у референса и дешевле для слабого сервера)."""
+    from . import cover_glow
+    cover_glow.render(cover=cover, audio=audio, out=out, start=start, dur=dur, font_path=font_path,
+                      fmt=fmt, fields=fields, lines=lines)
+
+
 # id стиля -> функция рендера по контракту из шапки файла. Новые анимации добавлять сюда.
 RENDERERS = {
     "premiere_classic": _render_classic,
+    "glow": _render_glow,
 }
 
 
