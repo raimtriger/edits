@@ -255,9 +255,9 @@ def render(*, cover, audio, out, start, dur, font_path, fmt, fields, lines):
                 k = ease_out((t - t0 - i * 0.035) / 0.45)
                 if k <= 0:
                     continue
-                ph = ((t * 0.72 - li * 0.23) % 1.0) * 1.5 - 0.25
+                ph = ((t * 0.36 - li * 0.23) % 1.0) * 1.5 - 0.25
                 dip = math.exp(-(((i / ln.n) - ph) / 0.11) ** 2)
-                shade = min(1.0, (1.0 - 0.58 * dip) * (1 + 0.1 * lift))
+                shade = min(1.0, (1.0 - 0.42 * dip) * (1 + 0.1 * lift))
                 a2 = a
                 if k < 1:
                     sg = (1 - k) * 7
