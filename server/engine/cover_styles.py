@@ -48,6 +48,10 @@ STYLES = [
      "desc": "Обложка качается в такт трека, сверху звезда, под ней название, подзаголовок и артист с бегущей волной яркости. Фон — размытая обложка.",
      "fields": ["title", "subtitle", "artist"], "needs_lines": False, "preview": None,
      "formats": {"9x16": "ready", "16x9": "soon", "1x1": "soon"}},
+    {"id": "coin", "title": "Монета", "tag": "Релиз · 15 с",
+     "desc": "Обложка влетает на весь экран и крутится монеткой, на обороте картинка зеркальная. Стеклянный край, вспышки цвета обложки на ударах, название собирается из обрывков букв.",
+     "fields": ["caption", "title", "artist"], "needs_lines": False, "preview": None,
+     "formats": {"9x16": "ready", "16x9": "soon", "1x1": "soon"}},
     {"id": "premiere_classic", "title": "Классика", "tag": "Премьера",
      "desc": "Обложка влетает с 3D-поворотом, пульсирует под бит, надпись набирается по буквам.",
      "fields": ["caption"], "needs_lines": False, "preview": None,
@@ -84,10 +88,18 @@ def _render_glow(*, cover, audio, out, start, dur, font_path, fmt, fields, lines
                       fmt=fmt, fields=fields, lines=lines)
 
 
+def _render_coin(*, cover, audio, out, start, dur, font_path, fmt, fields, lines):
+    """«Монета»: 720x1280, до 15 с."""
+    from . import cover_coin
+    cover_coin.render(cover=cover, audio=audio, out=out, start=start, dur=dur, font_path=font_path,
+                      fmt=fmt, fields=fields, lines=lines)
+
+
 # id стиля -> функция рендера по контракту из шапки файла. Новые анимации добавлять сюда.
 RENDERERS = {
     "premiere_classic": _render_classic,
     "glow": _render_glow,
+    "coin": _render_coin,
 }
 
 
