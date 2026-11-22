@@ -27,8 +27,8 @@ from .cover_glow import (FONTS, FPS, H, W, TAU, _Line, _project, _rounded_mask, 
                          simulate)
 
 NICE = int(os.environ.get("EDITS_NICE", "0"))
-SPIN_T0, SPIN_DUR = 0.25, 2.2        # первый переворот
-FLIP_DUR = 1.7                       # второй переворот
+SPIN_T0, SPIN_DUR = 0.25, 3.0        # первый переворот (в начале)
+FIN_DUR = 2.6                        # финал: переворот и «залёт» карточки на зрителя в последние секунды
 
 # Безопасная рамка (из шаблона 1080x1920, переведена в 720x1280): всё важное внутри неё.
 SAFE_L, SAFE_R, SAFE_T, SAFE_B = 52, 669, 122, 1053
@@ -129,7 +129,7 @@ def render(*, cover, audio, out, start, dur, font_path, fmt, fields, lines):
     y = SAFE_T + (avail - total) / 2.0
     items_y: list[tuple[_Line, float, float]] = []     # (строка, y верхнего края чернил, время старта)
     if cap_ln:
-        c0, c1 = _ink(cap_ln); items_y.append((cap_ln, y, 2.35)); y += (c1 - c0) + GAP_CAP
+        c0, c1 = _ink(cap_ln); items_y.append((cap_ln, y, 3.6)); y += (c1 - c0) + GAP_CAP
     card_top = y
     card_cy0 = int(y + CARD / 2)
     y += CARD
@@ -139,9 +139,9 @@ def render(*, cover, audio, out, start, dur, font_path, fmt, fields, lines):
             a0, a1 = _ink(ln)
             if k:
                 y += int(ln.size * 0.22)
-            items_y.append((ln, y, 1.35 + k * 0.25)); y += a1 - a0
+            items_y.append((ln, y, 2.7 + k * 0.25)); y += a1 - a0
     if art_ln:
-        a0, a1 = _ink(art_ln); y += GAP_ART; items_y.append((art_ln, y, 2.3)); y += a1 - a0
+        a0, a1 = _ink(art_ln); y += GAP_ART; items_y.append((art_ln, y, 3.4)); y += a1 - a0
 
     # ---------- карточка со стеклянным краем ----------
     card_px = cv2.resize(cov, (CARD, CARD), interpolation=cv2.INTER_AREA).astype(np.float32) / 255
@@ -152,23 +152,18 @@ def render(*, cover, audio, out, start, dur, font_path, fmt, fields, lines):
     edge = np.asarray(e.resize((CARD, CARD), Image.LANCZOS), np.float32)[..., None] / 255
     inner = cv2.GaussianBlur(edge, (0, 0), 9).reshape(CARD, CARD, 1)
     grad = np.linspace(1.0, 0.45, CARD, dtype=np.float32)[:, None, None]
-    card_px = np.clip(card_px + edge * 0.42 * grad + inner * 0.20 * grad, 0, 1)
     pad = 40                                          # поля вокруг карточки под свечение по контуру
     CP = CARD + pad * 2
     PAD0 = np.zeros((CP, CP, 4), np.float32)
     PAD0[pad:pad + CARD, pad:pad + CARD] = np.concatenate([card_px * mask, mask], 2)
-    # металлическая рамка вокруг карточки: фаска + анизотропные отражения (цвет блика меняется с углом поворота)
-    FW = 15
+    # тонкая рамка СНАРУЖИ карточки (на картинку ничего не заезжает); по ней бежит свет
+    FW = 3
     outer = Image.new("L", (CP * 4, CP * 4), 0)
-    ImageDraw.Draw(outer).rounded_rectangle([(pad - FW) * 4, (pad - FW) * 4, (pad + CARD + FW) * 4 - 1, (pad + CARD + FW) * 4 - 1], radius=(rad + FW) * 4, fill=255)
+    ImageDraw.Draw(outer).rounded_rectangle([(pad - FW - 1) * 4, (pad - FW - 1) * 4, (pad + CARD + FW + 1) * 4 - 1, (pad + CARD + FW + 1) * 4 - 1], radius=(rad + FW + 1) * 4, fill=255)
     FRAME_A = np.asarray(outer.resize((CP, CP), Image.LANCZOS), np.float32) / 255
-    FRAME_A = np.clip(FRAME_A - PAD0[..., 3], 0, 1)
-    fy_, fx_ = np.mgrid[0:CP, 0:CP].astype(np.float32)
-    FTH = (np.arctan2(fy_ - CP / 2, fx_ - CP / 2)).astype(np.float32)
-    # расстояние внутрь рамки (0 у карточки … 1 снаружи) — для фаски
-    dist_in = cv2.distanceTransform((FRAME_A > 0.5).astype(np.uint8), cv2.DIST_L2, 3)
-    FBEV = np.clip(dist_in / FW, 0, 1)
-    del fy_, fx_
+    inner_m = Image.new("L", (CP * 4, CP * 4), 0)
+    ImageDraw.Draw(inner_m).rounded_rectangle([(pad - 1) * 4, (pad - 1) * 4, (pad + CARD + 1) * 4 - 1, (pad + CARD + 1) * 4 - 1], radius=(rad + 1) * 4, fill=255)
+    FRAME_A = np.clip(FRAME_A - np.asarray(inner_m.resize((CP, CP), Image.LANCZOS), np.float32) / 255, 0, 1)
     src_pts = np.float32([[0, 0], [CP, 0], [CP, CP], [0, CP]])
     MASK_FULL = PAD0[..., 3:4]
 
@@ -176,7 +171,7 @@ def render(*, cover, audio, out, start, dur, font_path, fmt, fields, lines):
     rr = Image.new("L", (CP * 2, CP * 2), 0)
     ImageDraw.Draw(rr).rounded_rectangle([pad * 2, pad * 2, (pad + CARD) * 2 - 1, (pad + CARD) * 2 - 1], radius=rad * 2, outline=255, width=7)
     ring_line = np.asarray(rr.resize((CP, CP), Image.LANCZOS), np.float32)
-    RING = np.clip(cv2.GaussianBlur(ring_line, (0, 0), 1.0) * 0.8 + cv2.GaussianBlur(ring_line, (0, 0), 7) * 1.0, 0, 1.1)
+    RING = np.clip(cv2.GaussianBlur(ring_line, (0, 0), 6) * 0.9, 0, 1.0) * (1 - PAD0[..., 3])      # мягкое гало только снаружи
     yy_, xx_ = np.mgrid[0:CP, 0:CP].astype(np.float32)
     THETA = (np.arctan2(yy_ - CP / 2, xx_ - CP / 2) % TAU).astype(np.float32)
     S_DIAG = (((xx_ - pad) / CARD) + 0.6 * ((yy_ - pad) / CARD)) / 1.6          # координата для блика-«молнии»
@@ -196,17 +191,11 @@ def render(*, cover, audio, out, start, dur, font_path, fmt, fields, lines):
     del yy, xx
 
     # когда что происходит
-    hits = [(t, s) for t, s in an["hits"] if s > 0.78]
-    flash_t, last = [SPIN_T0 + 0.1], SPIN_T0
-    for t, s in hits:
-        if t > 2.6 and t - last > 1.3:
-            flash_t.append(t); last = t
-    strong = [(t, s) for t, s in an["hits"] if dur * 0.42 <= t <= dur * 0.62]
-    flip2 = max(strong, key=lambda x: x[1])[0] if strong else dur * 0.5
-    flip2 = min(flip2, dur - FLIP_DUR - 1.0)
-    flash_t.append(flip2)
-    if calm:
-        flash_t = [SPIN_T0 + 0.1, flip2]
+    fin_t = dur - FIN_DUR - 0.2
+    mid = [(t, s_) for t, s_ in an["hits"] if dur * 0.38 <= t <= dur * 0.55]
+    mid_t = max(mid, key=lambda x: x[1])[0] if (mid and not calm) else dur * 0.46
+    flash_t = [SPIN_T0 + SPIN_DUR + 0.1, mid_t, fin_t]        # блики редко: после посадки, раз в середине и перед финалом
+    FLASH_D = 1.9
 
     def blob(cx, cy, sx, sy):
         """Мягкое световое пятно без краёв: гауссиана на четверти размера, растянутая до кадра."""
@@ -267,9 +256,8 @@ def render(*, cover, audio, out, start, dur, font_path, fmt, fields, lines):
         if t >= SPIN_T0:
             x = min((t - SPIN_T0) / SPIN_DUR, 1.0)
             a += 360.0 * (1 - (1 - x) ** 2)
-        if t >= flip2:
-            x = min((t - flip2) / FLIP_DUR, 1.0)
-            a += 360.0 * (1 - (1 - x) ** 2)
+        if t >= fin_t:
+            a += 360.0 * ease_io((t - fin_t) / FIN_DUR)
         return a
 
     debug_safe = bool(os.environ.get("COIN_SAFE_DEBUG"))
@@ -282,7 +270,7 @@ def render(*, cover, audio, out, start, dur, font_path, fmt, fields, lines):
         else:
             sc_, ang_, yo_ = SC[i], ANG[i], YO[i]
         lift = max(0.0, sc_) / 0.05
-        breath = math.sin(TAU * t / 4.2)                      # общий «вдох» — и у фона, и у карточки
+        breath = math.sin(TAU * t / 5.0)                      # общий «вдох» — и у фона, и у карточки
 
         # фон дышит: масштаб и яркость пульсируют, на ударах сильнее
         z = 1.0 + 0.03 * t / dur + 0.10 * breath + 0.6 * sc_
@@ -297,25 +285,25 @@ def render(*, cover, audio, out, start, dur, font_path, fmt, fields, lines):
         fl, fj = 0.0, 0
         for j, ft in enumerate(flash_t):
             d = t - ft
-            if 0 <= d < 1.2:
-                v = (1 - math.exp(-d / 0.05)) * math.exp(-d / 0.28)
+            if 0 <= d < 1.5:
+                v = (1 - math.exp(-d / 0.15)) * math.exp(-d / 0.45) * (0.6 if j == 1 else 1.0)
                 if v > fl:
                     fl, fj = v, j
         if fl > 0.01:
             side = -1 if fj % 2 == 0 else 1
-            canvas += blob(W / 2 + side * 220, H * (0.34 if fj % 2 == 0 else 0.62), 330, 420) * accent * (0.55 * fl)
-            canvas += accent * (0.08 * fl)
+            canvas += blob(W / 2 + side * 220, H * (0.34 if fj % 2 == 0 else 0.62), 330, 420) * accent * (0.4 * fl)
 
         # карточка: залёт -> дыхание + удары; контур светится, по нему бежит комета, по картинке проходит блик
         u = ease_out(t / 0.9)
-        size = CP * lerp(1.95, 1.0, u) * (1 + sc_) * (1 + 0.012 * breath)
+        zf = 1.0 + 1.15 * min(1.0, max(0.0, (t - fin_t) / FIN_DUR)) ** 2.3          # финал: наезжает на зрителя
+        size = CP * lerp(1.95, 1.0, u) * (1 + sc_) * (1 + 0.012 * breath) * zf
         cy = lerp(H * 0.52, card_cy0, u) + yo_
         ry = spin_angle(t) + ang_
         rx = 6 * math.sin(TAU * t / 5.2) * ease_io((t - 2.4) / 1.0) + lerp(10, 0, u)
         rz = lerp(-12, 0, u) + 0.3 * ang_
 
         gain = ease_out((t - 0.5) / 1.2)
-        head = (t * TAU / 2.4) % TAU
+        head = (t * TAU / 5.5) % TAU
         d1 = (head - THETA) % TAU
         d2 = (head + math.pi - THETA) % TAU
         lead1 = np.clip(d1 / 0.35, 0, 1) ** 2 * (3 - 2 * np.clip(d1 / 0.35, 0, 1))
@@ -324,23 +312,19 @@ def render(*, cover, audio, out, start, dur, font_path, fmt, fields, lines):
         glow_i = (0.12 + 0.70 * comet) * (1 + 0.7 * lift + 0.9 * fl) * gain
         layer_src = PAD0.copy()
         rgb, al = layer_src[..., :3], layer_src[..., 3:4]
-        ph = math.radians(ry) * 1.3 + t * 0.5                      # отражения «едут» по металлу при вращении и со временем
-        refl = 0.5 + 0.5 * np.cos(2 * (FTH - ph))
-        spec = np.exp(-(((FTH - ph + math.pi) % math.pi - math.pi / 2) / 0.22) ** 2) * 0.9
-        bev = np.sin(FBEV * math.pi) ** 0.8                        # светлее по середине фаски, темнее по краям
-        metal = 0.20 + 0.55 * refl ** 2 + 0.7 * spec * bev + 0.18 * bev
-        mcol = (metal[..., None] * np.float32([1.0, 0.93, 0.82])) * (0.75 + 0.25 * glow_col)
-        mcol += (0.6 * accent) * (RING * glow_i)[..., None] * 0.5
+        # тонкая рамка: тусклый металл, по которому бежит свет (комета) и играет блик на вспышках
+        shine = 0.30 + 1.15 * comet + 0.9 * fl + 0.5 * lift
+        mcol = np.float32([1.0, 0.95, 0.88]) * (0.45 + 0.55 * glow_col) * shine[..., None]
         fa = FRAME_A[..., None]
-        rgb[:] = rgb * (1 - fa) + mcol * fa
+        rgb[:] = rgb * (1 - fa) + np.clip(mcol, 0, 1.6) * fa
         al[:] = np.maximum(al, fa)
         for ft in flash_t:                                      # блик-«молния» по обложке
             d = t - ft
-            if 0 <= d < 0.9:
-                pos = -0.25 + 1.5 * ease_io(d / 0.9)
-                band = np.exp(-((S_DIAG - pos) / 0.06) ** 2) * 0.55 + np.exp(-((S_DIAG - pos) / 0.20) ** 2) * 0.14
+            if 0 <= d < FLASH_D:
+                pos = -0.25 + 1.5 * ease_io(d / FLASH_D)
+                band = np.exp(-((S_DIAG - pos) / 0.07) ** 2) * 0.30 + np.exp(-((S_DIAG - pos) / 0.22) ** 2) * 0.08
                 rgb += (band[..., None] * MASK_FULL) * np.float32([1.0, 0.97, 0.92])
-        gi = (RING * glow_i)[..., None]
+        gi = (RING * glow_i * 0.8)[..., None]
         rgb += gi * glow_col
         layer_src[..., 3:4] = np.clip(al + gi * 0.9, 0, 1)
 
@@ -358,7 +342,7 @@ def render(*, cover, audio, out, start, dur, font_path, fmt, fields, lines):
         canvas = canvas * (1 - a) + layer[..., :3]
 
         # анаморфный луч через центр карточки на вспышке
-        if fl > 0.02:
+        if fl > 0.02 and fj != 1:
             gy = np.exp(-(((np.arange(H, dtype=np.float32) - cy) / 5.0) ** 2))
             gx = np.exp(-(((np.arange(W, dtype=np.float32) - W / 2) / 300.0) ** 4))
             canvas += np.outer(gy, gx)[..., None] * glow_col * (0.7 * fl)
@@ -368,7 +352,8 @@ def render(*, cover, audio, out, start, dur, font_path, fmt, fields, lines):
         draw_text(tcol, tal, t, lift, sway_x * 0.8, sway_y * 0.8)
         g = cv2.GaussianBlur(cv2.resize(tcol, (W // 2, H // 2)), (0, 0), 5)
         canvas += cv2.resize(g, (W, H)) * (0.32 + 0.12 * lift)
-        canvas = canvas * (1 - tal) + tcol
+        tf = 1 - ease_io((t - fin_t) / 0.9)
+        canvas = canvas * (1 - tal * tf) + tcol * tf
 
         canvas *= vign
         canvas *= min(1, t / 0.2) * (1 - ease_io((t - (dur - 0.7)) / 0.7))
