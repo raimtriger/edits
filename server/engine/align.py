@@ -72,6 +72,15 @@ def align_lines(lines: list[str], words: list[Word], total: float) -> list[dict]
             if n:
                 toks.append(n)
                 owner.append(i)
+    # мусор распознавания: не-кириллица/латиница («שוב») и слова, у которых время «прыгнуло» назад
+    clean: list[Word] = []
+    for w in words:
+        if not re.search(r"[а-яёa-z]", w.text.lower()):
+            continue
+        if clean and w.start < clean[-1].start - 0.3:
+            continue
+        clean.append(w)
+    words = clean
     wn = [norm(w.text) for w in words]
     # распознавание на пении часто путает буквы — подтягиваем слово к ближайшему слову текста (похожесть ≥ 0,7)
     vocab = sorted(set(toks))
@@ -120,11 +129,19 @@ def _fill_gaps(out: list[dict], total: float) -> None:
             j += 1
         left = out[i - 1]["end"] if i > 0 else 0.5
         right = out[j]["start"] if j < n else min(total, left + 3.0 * (j - i))
+        left = min(left, total - 0.4 * (j - i))
         step = max(0.6, (right - left) / (j - i)) if right > left else 2.0
         for k in range(i, j):
             out[k]["start"] = round(left + (k - i) * step, 2)
             out[k]["end"] = round(left + (k - i + 1) * step, 2)
         i = j
+    # все строки внутри трека и по порядку: не выходим за конец и не накладываемся
+    for k in range(n - 1, -1, -1):
+        lim = total - 0.4 if k == n - 1 else out[k + 1]["start"] - 0.4
+        out[k]["start"] = max(0.0, min(out[k]["start"], lim))
+    for k in range(1, n):
+        if out[k]["start"] < out[k - 1]["start"] + 0.3:
+            out[k]["start"] = out[k - 1]["start"] + 0.3
     # строка держится до начала следующей (но не дольше 6 с)
     for k in range(n):
         nxt = out[k + 1]["start"] if k + 1 < n else total
