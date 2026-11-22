@@ -59,7 +59,36 @@ def _ink(ln: _Line) -> tuple[int, int]:
     return (0, 0) if top > bot else (top, bot + 1)
 
 
-def render(*, cover, audio, out, start, dur, font_path, fmt, fields, lines):
+def _load_icon(path: str, h_px: int):
+    """Иконка/знак с прозрачностью -> (rgb, alpha) float32, высота h_px. PNG/WebP напрямую, SVG через rsvg-convert или cairosvg."""
+    import shutil
+    import tempfile
+    pth = str(path)
+    if pth.lower().endswith(".svg"):
+        tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False).name
+        if shutil.which("rsvg-convert"):
+            subprocess.run(["rsvg-convert", "-h", str(h_px * 3), "-o", tmp, pth], check=True)
+        else:
+            import cairosvg  # noqa
+            cairosvg.svg2png(url=pth, write_to=tmp, output_height=h_px * 3)
+        pth = tmp
+    im = cv2.imread(pth, cv2.IMREAD_UNCHANGED)
+    if im is None:
+        raise ValueError("не удалось прочитать иконку")
+    if im.ndim == 2:
+        im = cv2.cvtColor(im, cv2.COLOR_GRAY2BGRA)
+    elif im.shape[2] == 3:
+        im = np.dstack([im, np.full(im.shape[:2], 255, np.uint8)])
+    ys, xs = np.where(im[..., 3] > 8)                       # обрезаем пустые поля
+    if len(ys):
+        im = im[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+    k = h_px / im.shape[0]
+    im = cv2.resize(im, (max(1, int(im.shape[1] * k)), h_px), interpolation=cv2.INTER_AREA)
+    rgb = cv2.cvtColor(im[..., :3], cv2.COLOR_BGR2RGB).astype(np.float32) / 255
+    return rgb, im[..., 3:4].astype(np.float32) / 255
+
+
+def render(*, cover, audio, out, start, dur, font_path, fmt, fields, lines, icon=None):
     dur = float(max(6.0, min(15.0, dur)))
     N = int(FPS * dur)
     rng = np.random.default_rng(5)
@@ -111,8 +140,13 @@ def render(*, cover, audio, out, start, dur, font_path, fmt, fields, lines):
     art_ln = _Line(artist, f_black, 30, 6, TEXT_W) if artist else None
 
     GAP_CAP, GAP_CARD, GAP_ART = 66, 46, 34         # запас под «подпрыгивание», крен и перспективу карточки
+    ICON_H, GAP_ICON = 92, 44
+    icon_px = _load_icon(icon, ICON_H) if icon else None
+
     def block_h(card):
         h = card
+        if icon_px is not None:
+            h += ICON_H + GAP_ICON
         if cap_ln:
             c0, c1 = _ink(cap_ln); h += (c1 - c0) + GAP_CAP
         if t_lines:
@@ -131,6 +165,9 @@ def render(*, cover, audio, out, start, dur, font_path, fmt, fields, lines):
     total = block_h(CARD)
     y = SAFE_T + (avail - total) / 2.0
     items_y: list[tuple[_Line, float, float]] = []     # (строка, y верхнего края чернил, время старта)
+    icon_y = y
+    if icon_px is not None:
+        y += ICON_H + GAP_ICON
     if cap_ln:
         c0, c1 = _ink(cap_ln); items_y.append((cap_ln, y, 3.6)); y += (c1 - c0) + GAP_CAP
     card_top = y
@@ -361,6 +398,31 @@ def render(*, cover, audio, out, start, dur, font_path, fmt, fields, lines):
             gx = np.exp(-(((np.arange(W, dtype=np.float32) - W / 2) / 300.0) ** 4))
             canvas += np.outer(gy, gx)[..., None] * glow_col * (0.7 * fl)
 
+        if icon_px is not None:                                 # иконка «дышит»: масштаб и свечение пульсируют
+            irgb, ia = icon_px
+            ik = ease_out((t - 0.9) / 0.8)
+            if ik > 0:
+                br = math.sin(TAU * t / 3.4)
+                sc_i = (0.6 + 0.4 * ik) * (1 + 0.07 * br)
+                iw_, ih_ = max(2, int(irgb.shape[1] * sc_i)), max(2, int(irgb.shape[0] * sc_i))
+                r_rgb = cv2.resize(irgb, (iw_, ih_), interpolation=cv2.INTER_AREA)
+                r_a = cv2.resize(ia[..., 0], (iw_, ih_), interpolation=cv2.INTER_AREA)[..., None] * ik * (1 - ease_io((t - fin_t) / 0.9))
+                cx_i, cy_i = W / 2 + sway_x * 0.8, icon_y + ICON_H / 2 + sway_y * 0.8
+                x0_i, y0_i = int(cx_i - iw_ / 2), int(cy_i - ih_ / 2)
+                pad_g = 30                                     # мягкое свечение вокруг иконки
+                gl = cv2.GaussianBlur(np.pad(r_a, ((pad_g, pad_g), (pad_g, pad_g), (0, 0)))[..., 0], (0, 0), 14)[..., None]
+                for arr, col, k_, xx0, yy0 in ((gl, r_rgb.reshape(-1, 3).mean(0), 0.30 + 0.20 * br, x0_i - pad_g, y0_i - pad_g), (r_a, None, 1.0, x0_i, y0_i)):
+                    h_, w_ = arr.shape[:2]
+                    xa, ya, xb, yb = max(xx0, 0), max(yy0, 0), min(xx0 + w_, W), min(yy0 + h_, H)
+                    if xb <= xa or yb <= ya:
+                        continue
+                    a_ = arr[ya - yy0:yb - yy0, xa - xx0:xb - xx0]
+                    reg = canvas[ya:yb, xa:xb]
+                    if col is None:
+                        reg[:] = reg * (1 - a_) + r_rgb[ya - yy0:yb - yy0, xa - xx0:xb - xx0] * a_
+                    else:
+                        reg += a_ * col * k_
+
         tal = np.zeros((H, W, 1), np.float32)
         tcol = np.zeros((H, W, 3), np.float32)
         draw_text(tcol, tal, t, lift, sway_x * 0.8, sway_y * 0.8)
@@ -395,10 +457,19 @@ def render(*, cover, audio, out, start, dur, font_path, fmt, fields, lines):
         raise RuntimeError("ffmpeg: " + ff.stderr.read().decode()[-800:])
 
 
-if __name__ == "__main__":   # python -m server.engine.cover_coin cover.jpg track.mp3 out.mp4 0 15 "Надпись" "Название" "Артист"
-    import sys
-    a = sys.argv
-    render(cover=a[1], audio=a[2], out=a[3], start=float(a[4]), dur=float(a[5]), font_path=None,
-           fmt={"w": W, "h": H, "fps": FPS},
-           fields={"caption": a[6] if len(a) > 6 else "", "title": a[7] if len(a) > 7 else "", "artist": a[8] if len(a) > 8 else ""},
-           lines=[])
+if __name__ == "__main__":
+    # python -m server.engine.cover_coin cover.jpg out.mp4 --title "Название" [--artist ..] [--caption ПРЕМЬЕРА] [--icon mark.svg] [--font f.ttf] [--audio track.mp3 --start 0] [--dur 15]
+    import argparse
+    import tempfile
+    ap = argparse.ArgumentParser()
+    ap.add_argument("cover"); ap.add_argument("out")
+    ap.add_argument("--audio"); ap.add_argument("--start", type=float, default=0); ap.add_argument("--dur", type=float, default=15)
+    ap.add_argument("--caption", default=""); ap.add_argument("--title", default=""); ap.add_argument("--artist", default="")
+    ap.add_argument("--icon"); ap.add_argument("--font")
+    a = ap.parse_args()
+    audio = a.audio
+    if not audio:                                     # без звука — тишина: спокойная анимация
+        audio = tempfile.NamedTemporaryFile(suffix=".wav", delete=False).name
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t", str(a.dur + 1), audio], check=True)
+    render(cover=a.cover, audio=audio, out=a.out, start=a.start, dur=a.dur, font_path=a.font, fmt={"w": W, "h": H, "fps": FPS},
+           fields={"caption": a.caption, "title": a.title, "artist": a.artist}, lines=[], icon=a.icon)
