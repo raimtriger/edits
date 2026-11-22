@@ -39,7 +39,8 @@ def transcribe(audio_path: str, lyrics_hint: str | None = None) -> tuple[list[Wo
     prompt = (lyrics_hint or "")[:400] or None
     segments, _ = model.transcribe(
         audio_path, language="ru", word_timestamps=True, vad_filter=True,
-        initial_prompt=prompt, condition_on_previous_text=False,
+        vad_parameters={"threshold": 0.3, "min_silence_duration_ms": 1200},     # пение под музыку: мягче, чтобы не отрезало куплеты
+        initial_prompt=prompt, condition_on_previous_text=False, beam_size=5,
     )
     words, segs = [], []
     for s in segments:
@@ -74,6 +75,15 @@ def align_lines(lines: list[str], words: list[Word], total: float) -> list[dict]
                 toks.append(n)
                 owner.append(i)
     wn = [norm(w.text) for w in words]
+    # распознавание на пении часто путает буквы — подтягиваем слово к ближайшему слову текста (похожесть ≥ 0,7)
+    vocab = sorted(set(toks))
+    cache: dict[str, str] = {}
+    for k, w in enumerate(wn):
+        if w and w not in vocab:
+            if w not in cache:
+                m = difflib.get_close_matches(w, vocab, n=1, cutoff=0.7)
+                cache[w] = m[0] if m else w
+            wn[k] = cache[w]
     sm = difflib.SequenceMatcher(a=toks, b=wn, autojunk=False)
     hit: dict[int, list[Word]] = {}
     for blk in sm.get_matching_blocks():
@@ -84,6 +94,17 @@ def align_lines(lines: list[str], words: list[Word], total: float) -> list[dict]
     for i, ln in enumerate(lines):
         ws = hit.get(i)
         out.append({"text": ln, "start": ws[0].start if ws else None, "end": ws[-1].end if ws else None})
+    if sum(1 for o in out if o["start"] is not None) < max(2, len(lines) * 0.25):
+        # распознавание почти ничего не поймало: раскладываем строки по словам на участке, где вообще был голос
+        a = words[0].start if words else 1.0
+        b = words[-1].end if words else total * 0.9
+        if b - a < 3 or len(words) < 3:
+            a, b = min(1.0, total * 0.1), total * 0.92
+        cnt = [max(1, len(l.split())) for l in lines]
+        t, tot = a, sum(cnt)
+        for o, c in zip(out, cnt):
+            o["start"], o["end"] = t, t + (b - a) * c / tot
+            t = o["end"]
     _fill_gaps(out, total)
     return out
 
