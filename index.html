@@ -651,8 +651,33 @@ function toast(msg) { const el = $('#toast'); el.textContent = msg; el.classList
     if (run((now - t0) / 1000)) return finish();
     raf = requestAnimationFrame(frame);
   }
-  raf = requestAnimationFrame(frame);
-  box.addEventListener('click', finish);
+  const startAnim = () => { if (!done) raf = requestAnimationFrame(frame); };
+  /* первый вход: зацикленное видео из ярких кадров; нет файла или медленно грузится — прежняя анимация */
+  if (first && !reduce) {
+    const v = document.createElement('video');
+    v.muted = true; v.loop = true; v.autoplay = true; v.playsInline = true; v.preload = 'auto'; v.setAttribute('playsinline', '');
+    v.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .6s ease';
+    let shown = false;
+    const fallback = () => { if (shown || done) return; shown = true; v.remove(); startAnim(); };
+    const tm = setTimeout(fallback, 4000);
+    v.onerror = () => { clearTimeout(tm); fallback(); };
+    v.onloadeddata = () => {
+      if (shown || done) return; shown = true; clearTimeout(tm);
+      svg.style.display = 'none'; $('#introPhr').style.display = 'none';
+      v.style.opacity = 1;
+      const shade = document.createElement('div');
+      shade.style.cssText = 'position:absolute;inset:0;background:linear-gradient(180deg,rgba(11,11,12,.35),rgba(11,11,12,0) 30%,rgba(11,11,12,0) 55%,rgba(11,11,12,.85))';
+      const logo = document.createElement('div');
+      logo.style.cssText = "position:absolute;left:0;right:0;top:calc(46px + env(safe-area-inset-top));text-align:center;font:500 22px var(--display);letter-spacing:-.02em;color:#fff";
+      logo.innerHTML = 'LUDUS<span style="color:' + LIME + '"> EDITS</span>';
+      box.insertBefore(v, box.firstChild); box.appendChild(shade); box.appendChild(logo);
+      const sk = $('#introSkip'); sk.textContent = 'Начать'; sk.style.display = ''; sk.style.background = LIME; sk.style.color = '#0B0B0C'; sk.style.padding = '15px 44px'; sk.style.fontSize = '16px';
+      v.play && v.play().catch(() => {});
+    };
+    v.src = A('api/intro-loop.mp4?v=1');
+    box.insertBefore(v, box.firstChild);
+  } else startAnim();
+  box.addEventListener('click', e => { if (!first || reduce || !box.querySelector('video')) finish(); });
   $('#introSkip').addEventListener('click', e => { e.stopPropagation(); finish(); });
   window.__introSeek = t => run(t);   // для проверки кадров
 })();

@@ -544,15 +544,15 @@ def media(eid: str):
 
 
 HOME_LOOP = DATA / "home-loop.mp4"
+INTRO_LOOP = DATA / "intro-loop.mp4"
 
 
-@app.get("/api/home-loop.mp4")
-def home_loop(request: Request):
-    """Короткий беззвучный цикл для главного экрана. Отдаём сами с Range (iOS без 206 видео не играет)."""
+def range_video(path: Path, request: Request):
+    """Беззвучный цикл целиком в память + Range (iOS без 206 видео не играет)."""
     from fastapi.responses import Response
-    if not HOME_LOOP.exists():
+    if not path.exists():
         raise HTTPException(404)
-    data = HOME_LOOP.read_bytes()
+    data = path.read_bytes()
     n = len(data)
     h = {"Accept-Ranges": "bytes", "Cache-Control": "max-age=3600", "Content-Type": "video/mp4"}
     rng = request.headers.get("range", "")
@@ -568,6 +568,17 @@ def home_loop(request: Request):
         except ValueError:
             pass
     return Response(data, headers=h)
+
+
+@app.get("/api/home-loop.mp4")
+def home_loop(request: Request):
+    return range_video(HOME_LOOP, request)
+
+
+@app.get("/api/intro-loop.mp4")
+def intro_loop(request: Request):
+    """Стартовый цикл первого экрана (собирает server/tools/make_intro_loop.py)."""
+    return range_video(INTRO_LOOP, request)
 
 
 @app.get("/api/health")
