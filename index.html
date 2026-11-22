@@ -1264,15 +1264,27 @@ $('#render').onclick = () => renderEdit().catch(err => {
     $('#lnCoverTxt').textContent = cur.cover_url ? 'Обложка загружена ✓' : 'Нужна для анимаций и сторис';
     $('#fragInfo').style.display = 'block';
     $('#fragInfo').textContent = instr ? 'Текст не нужен: эдит смонтируется без субтитров.'
-      : 'Тап по строке — послушать её. Блеклые строки не попадут в эдит.';
+      : 'Тап по строке — послушать её, ✎ — поправить текст, ✕ — убрать. Блеклые строки не попадут в эдит.';
     $('#lineList').innerHTML = cur.lines.map((l, i) => `
       <div class="ln ${l.chorus ? 'ch' : ''}" style="opacity:${l.end > cur.frag_start && l.start < cur.frag_end ? 1 : .4}"><span class="t">${fmt(l.start)}</span><span class="x" data-play="${i}" style="cursor:pointer">${esc(l.text)}</span>
-      <button data-li="${i}" data-d="-0.1" aria-label="Раньше">−</button><button data-li="${i}" data-d="0.1" aria-label="Позже">+</button></div>`).join('');
+      <button data-li="${i}" data-d="-0.1" aria-label="Раньше">−</button><button data-li="${i}" data-d="0.1" aria-label="Позже">+</button><button data-ed="${i}" aria-label="Править текст">✎</button><button data-rm="${i}" aria-label="Убрать строку">✕</button></div>`).join('');
   }
   $('#lineList').addEventListener('click', e => {
     if (!window.LIVE || !cur) return;
     const p = e.target.closest('[data-play]');
     if (p) { const l = cur.lines[+p.dataset.play]; startPlayback(Math.max(0, l.start - 0.3), l.end); return; }
+    const ed = e.target.closest('[data-ed]');
+    if (ed) {                      // правка текста строки прямо в списке (автотекст ошибается)
+      const i = +ed.dataset.ed, row = ed.closest('.ln'), x = row.querySelector('.x');
+      const inp = document.createElement('input'); inp.value = cur.lines[i].text; inp.maxLength = 200; inp.setAttribute('aria-label', 'Текст строки');
+      inp.style.cssText = 'flex:1;min-width:0;background:var(--bg);color:var(--fg);border:1px solid var(--card2);border-radius:8px;padding:6px 8px;font:inherit';
+      x.replaceWith(inp); inp.focus(); inp.select();
+      const done = () => { const v = inp.value.trim(); if (v) cur.lines[i].text = v; renderLiveLines(); };
+      inp.onblur = done; inp.onkeydown = k => { if (k.key === 'Enter') inp.blur(); };
+      return;
+    }
+    const rm = e.target.closest('[data-rm]');
+    if (rm) { if (cur.lines.length > 1) { cur.lines.splice(+rm.dataset.rm, 1); renderLiveLines(); } else toast('Нужна хотя бы одна строка'); return; }
     const b = e.target.closest('[data-li]'); if (!b) return;
     const i = +b.dataset.li, l = cur.lines[i], d = +b.dataset.d;
     l.start = Math.max(0, Math.round((l.start + d) * 10) / 10);
