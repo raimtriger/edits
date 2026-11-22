@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """Подтягивает футажи с публичной папки Яндекс.Диска в /opt/edits/footage/<категория>/.
-Запуск: /opt/edits/venv/bin/python /opt/edits/server/tools/sync_footage.py [ссылка]
-Папки на диске = категории (city, night, nature, love, road, ...). Уже скачанное пропускается, можно запускать повторно."""
-import json, os, sys, urllib.parse, urllib.request
+Запуск: /opt/edits/venv/bin/python /opt/edits/server/tools/sync_footage.py <ссылка> [--replace]
+Папки верхнего уровня с именами city/night/nature/love/road/bokeh/cinema/stock становятся категориями, всё остальное (в т.ч. лежащее россыпью
+или в других папках) попадает в stock. Уже скачанное пропускается, можно запускать повторно.
+--replace: качает в footage.new, и только если скачано хотя бы одно видео, старую папку откладывает в footage.old-<время> и ставит новую (откат: вернуть .old)."""
+import json, os, shutil, sys, time, urllib.parse, urllib.request
 from pathlib import Path
 
-LINK = sys.argv[1] if len(sys.argv) > 1 else "https://disk.yandex.ru/d/KbQXxQxahi5ZSQ"
+ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
+REPLACE = "--replace" in sys.argv
+LINK = ARGS[0] if ARGS else "https://disk.yandex.ru/d/KbQXxQxahi5ZSQ"
 DEST = Path(os.environ.get("EDITS_FOOTAGE", "/opt/edits/footage"))
 CATS = {"city", "night", "nature", "love", "road", "bokeh", "cinema", "stock"}
 EXT = (".mp4", ".mov", ".webm", ".m4v")
@@ -31,42 +35,45 @@ def items(path):
             return
 
 
+def walk(path="/", cat=None, depth=0):
+    """Все видео рекурсивно; категория — имя папки верхнего уровня из CATS, иначе stock."""
+    for it in items(path):
+        if it["type"] == "dir":
+            name = it["name"].lower()
+            sub = name if (depth == 0 and name in CATS) else cat
+            yield from walk(it["path"], sub, depth + 1)
+        elif it["name"].lower().endswith(EXT):
+            yield (cat or "stock"), it
+
+
 def main():
+    out_root = DEST.with_name(DEST.name + ".new") if REPLACE else DEST
     n_new = n_all = 0
-    for top in items("/"):
-        # корень может быть папкой «edits» с категориями внутри — спускаемся на один уровень, если категорий нет сверху
-        pass
-    roots = [("/", list(items("/")))]
-    names = {i["name"].lower() for i in roots[0][1] if i["type"] == "dir"}
-    if not (names & CATS):  # категории лежат глубже (например, внутри папки edits)
-        for d in [i for i in roots[0][1] if i["type"] == "dir"]:
-            sub = list(items(d["path"]))
-            if {i["name"].lower() for i in sub if i["type"] == "dir"} & CATS:
-                roots = [(d["path"], sub)]
-                break
-    base, top_items = roots[0]
-    for d in top_items:
-        cat = d["name"].lower()
-        if d["type"] != "dir" or cat not in CATS:
-            continue
-        out = DEST / cat
+    for cat, f in walk():
+        n_all += 1
+        out = out_root / cat
         out.mkdir(parents=True, exist_ok=True)
-        for f in items(d["path"]):
-            if f["type"] != "file" or not f["name"].lower().endswith(EXT):
-                continue
-            n_all += 1
-            target = out / f["name"]
-            if target.exists() and target.stat().st_size == f.get("size"):
-                continue
-            if f.get("size", 0) > MAX_MB * 1048576:
-                print(f"пропуск (>{MAX_MB} МБ): {cat}/{f['name']}")
-                continue
-            tmp = target.with_suffix(target.suffix + ".part")
-            urllib.request.urlretrieve(f["file"], tmp)
-            tmp.replace(target)
-            n_new += 1
-            print(f"+ {cat}/{f['name']}  {f.get('size', 0) // 1048576} МБ", flush=True)
-    print(f"готово: новых {n_new}, всего видео {n_all}")
+        target = out / f["name"]
+        if target.exists() and target.stat().st_size == f.get("size"):
+            continue
+        if f.get("size", 0) > MAX_MB * 1048576:
+            print(f"пропуск (>{MAX_MB} МБ): {cat}/{f['name']}")
+            continue
+        tmp = target.with_suffix(target.suffix + ".part")
+        urllib.request.urlretrieve(f["file"], tmp)
+        tmp.replace(target)
+        n_new += 1
+        print(f"+ {cat}/{f['name']}  {f.get('size', 0) // 1048576} МБ", flush=True)
+    print(f"готово: новых {n_new}, всего видео в папке {n_all}")
+    if REPLACE:
+        if n_all == 0 or not out_root.exists():
+            sys.exit("в папке нет видео — старый футаж не тронут")
+        old = DEST.with_name(f"{DEST.name}.old-{time.strftime('%Y%m%d-%H%M')}")
+        if DEST.exists():
+            DEST.rename(old)
+            print("старый футаж:", old)
+        out_root.rename(DEST)
+        print("новый футаж на месте")
 
 
 if __name__ == "__main__":
