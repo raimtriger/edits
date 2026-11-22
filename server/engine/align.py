@@ -34,25 +34,17 @@ def _get_model():
 
 
 def transcribe(audio_path: str, lyrics_hint: str | None = None) -> tuple[list[Word], list[tuple[float, float, str]]]:
-    """Возвращает (слова, сегменты). Если с VAD ничего не услышали (голос тихий/под музыкой) — повторяем без VAD."""
+    """Возвращает (слова, сегменты). Параметры как в рабочем пайплайне автопостинга: без VAD (на пении под музыку он вырезает всё), beam 1."""
     model = _get_model()
     prompt = (lyrics_hint or "")[:400] or None
-
-    def run(vad: bool):
-        kw = dict(vad_parameters={"threshold": 0.25, "min_silence_duration_ms": 1200}) if vad else {}
-        segments, _ = model.transcribe(
-            audio_path, language="ru", word_timestamps=True, vad_filter=vad,
-            initial_prompt=prompt, condition_on_previous_text=False, beam_size=5, **kw)
-        words, segs = [], []
-        for s in segments:
-            segs.append((s.start, s.end, s.text.strip()))
-            for w in (s.words or []):
-                words.append(Word(w.word.strip(), w.start, w.end))
-        return words, segs
-
-    words, segs = run(True)
-    if len(words) < 3 and not os.environ.get("NO_VAD_RETRY"):
-        words, segs = run(False)
+    segments, _ = model.transcribe(
+        audio_path, language="ru", word_timestamps=True, vad_filter=False,
+        initial_prompt=prompt, condition_on_previous_text=False, beam_size=1)
+    words, segs = [], []
+    for s in segments:
+        segs.append((s.start, s.end, s.text.strip()))
+        for w in (s.words or []):
+            words.append(Word(w.word.strip(), w.start, w.end))
     return words, segs
 
 
