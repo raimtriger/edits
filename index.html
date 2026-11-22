@@ -1115,6 +1115,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
     const hb = $('#hBot'); if (hb) hb.onclick = () => { try { window.Telegram.WebApp.close(); } catch (e) {} };
     const again = $('#hAgain');
     if (again) again.onclick = async () => {
+      if (edits.some(e => e.status === 'queued' || e.status === 'rendering')) return toast('Один ролик уже монтируется — дождись его');
       try { await api('api/edits', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ track_id: done.track_id, mode: done.params.mode, bw: done.params.bw, footage: done.params.footage }) });
         toast('Монтируем новый вариант — придёт в бот'); loadEdits(); loadMe().catch(() => {}); } catch (e) { toast(e.message); }
     };
@@ -1311,7 +1312,15 @@ $('#render').onclick = () => renderEdit().catch(err => {
   mountMsg.className = 'mute'; mountMsg.style.cssText = 'text-align:center;font-size:13px;min-height:18px';
   mountBtn.after(mountMsg);
   const mountLabel = () => selKind !== 'cover' ? 'Смонтировать' : comboStatus() === 'ready' ? 'Оживить обложку' : 'Скоро · ' + curStyle().title + ' ' + curFmt().ratio;
+  const isBusy = () => edits.some(e => e.status === 'queued' || e.status === 'rendering');
+  function syncBusy() {      // пока монтируется ролик (эдит или обложка), новые заказывать нельзя
+    const b = isBusy();
+    mountBtn.disabled = b; mountBtn.style.opacity = b ? .45 : 1;
+    mountBtn.textContent = b ? 'Идёт монтаж — дождись видео' : mountLabel();
+    const ag = $('#hAgain'); if (ag) { ag.disabled = b; ag.style.opacity = b ? .45 : 1; }
+  }
   mountBtn.onclick = async () => {
+    if (isBusy()) return toast('Один ролик уже монтируется — дождись его');
     if (mountBtn.disabled) return;
     if (!selTrack) { mountMsg.style.color = '#ff6b6b'; mountMsg.textContent = 'Сначала загрузи трек во вкладке «Треки»'; return; }
     const t = tracks.find(x => x.id === selTrack);
@@ -1337,7 +1346,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
       loadEdits(); loadMe().catch(() => {});
       setTimeout(() => $('#liveEdits').scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
     } catch (e) { mountMsg.style.color = '#ff6b6b'; mountMsg.textContent = e.message; }
-    setTimeout(() => { mountBtn.disabled = false; mountBtn.style.opacity = 1; mountBtn.textContent = mountLabel(); }, 2500);
+    setTimeout(() => { mountBtn.disabled = false; mountBtn.style.opacity = 1; mountBtn.textContent = mountLabel(); loadEdits().catch(() => {}); }, 2500);
   };
   /* режим: эдит или анимация обложки */
   let selKind = 'edit';
@@ -1564,7 +1573,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
   paintPickBtn();
 
   async function loadEdits() {
-    edits = await api('api/edits'); renderHome();
+    edits = await api('api/edits'); renderHome(); try { syncBusy(); } catch (e) {}
     const box = $('#liveEdits'); box.style.display = 'flex';
     box.innerHTML = edits.length ? '<span class="lbl" style="margin-top:6px">Мои эдиты</span>' + edits.slice(0, 6).map(e => {
       const t = tracks.find(x => x.id === e.track_id), name = t ? '«' + esc(t.title) + '»' : '';

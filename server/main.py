@@ -503,9 +503,9 @@ def make_edit(body: EditIn, u=Depends(current_user)):
         raw.setdefault("caption", body.caption)
         cover_params = {"style": body.style, "format": body.format,
                         "fields": cover_styles.clean_fields(body.style, raw, t["title"])}
+    if q("SELECT 1 FROM edits WHERE user_id=? AND status IN ('queued','rendering')", (u["id"],), one=True):     # пока монтируется один ролик, второй не принимаем — для всех, включая владельца
+        raise HTTPException(429, "один ролик уже монтируется — дождись его, видео придёт в бот")
     if not u["is_owner"]:
-        if q("SELECT 1 FROM edits WHERE user_id=? AND status IN ('queued','rendering')", (u["id"],), one=True):
-            raise HTTPException(429, "один эдит уже монтируется — дождись его, видео придёт в бот")
         if q("SELECT COUNT(*) c FROM edits WHERE status IN ('queued','rendering')", one=True)["c"] >= QUEUE_MAX:
             raise HTTPException(503, "сейчас много заявок — попробуй через несколько минут")
         if u["free_left"] <= 0:

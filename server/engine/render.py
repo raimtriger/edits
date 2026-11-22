@@ -71,7 +71,12 @@ def probe_duration(path: Path) -> float:
 
 
 def list_footage(folder: Path) -> list[Path]:
-    return sorted(p for p in folder.rglob("*") if p.suffix.lower() in VIDEO_EXT)
+    def ok(p: Path) -> bool:          # битые симлинки и пустые файлы пропускаем — иначе ffmpeg падает на «No such file»
+        try:
+            return p.suffix.lower() in VIDEO_EXT and p.is_file() and p.stat().st_size > 1024
+        except OSError:
+            return False
+    return sorted(p for p in folder.rglob("*") if ok(p))
 
 
 def _ass_rgb(hexrgb: str, alpha: str = "00") -> str:
