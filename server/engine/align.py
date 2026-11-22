@@ -99,8 +99,28 @@ def align_lines(lines: list[str], words: list[Word], total: float) -> list[dict]
 
     out = []
     for i, ln in enumerate(lines):
-        ws = hit.get(i)
-        out.append({"text": ln, "start": ws[0].start if ws else None, "end": ws[-1].end if ws else None})
+        ws = hit.get(i) or []
+        n_w = max(1, len([t for t in ln.split() if norm(t)]))
+        if ws and len(ws) / n_w >= 0.34:           # строку принимаем, если поймано не меньше трети слов (как в автопостинге)
+            out.append({"text": ln, "start": min(w.start for w in ws), "end": max(w.end for w in ws)})
+        else:
+            out.append({"text": ln, "start": None, "end": None})
+    prev_end = -1.0
+    for o in out:                                   # строки не по порядку — плохое совпадение: выкидываем, их место заполнится между соседями
+        if o["start"] is None:
+            continue
+        if o["start"] < prev_end - 0.2:
+            o["start"] = o["end"] = None
+        else:
+            prev_end = o["end"]
+    floor = 0.0                                     # Whisper нередко цепляет только хвост строки: слишком короткую строку растягиваем назад
+    for o in out:
+        if o["start"] is None:
+            continue
+        est = max(0.8, 0.34 * max(1, len([t for t in o["text"].split() if norm(t)])))
+        if o["end"] - o["start"] < 0.6 * est:
+            o["start"] = max(floor, o["end"] - est)
+        floor = o["end"] + 0.05
     if sum(1 for o in out if o["start"] is not None) < max(2, len(lines) * 0.25):
         # распознавание почти ничего не поймало: раскладываем строки по словам на участке, где вообще был голос
         a = words[0].start if words else 1.0
