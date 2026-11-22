@@ -348,6 +348,13 @@ async def upload_track(audio: UploadFile = File(...), title: str = Form(""), lyr
     if dur > MAX_TRACK_SEC:
         path.unlink(missing_ok=True)
         raise HTTPException(400, f"трек длиннее {MAX_TRACK_SEC // 60} минут — загрузи сам трек, не сет")
+    if not instrumental:                     # песня со словами: только полный трек и полный текст (иначе строки не встанут на звук)
+        if dur < 60:
+            path.unlink(missing_ok=True)
+            raise HTTPException(400, "загрузи трек целиком, не отрезок — фрагмент для эдита выберешь потом")
+        if len(lyrics.split()) < 8:
+            path.unlink(missing_ok=True)
+            raise HTTPException(400, "вставь текст песни целиком — он обязателен")
     title = title.strip() or Path(audio.filename or "Трек").stem
     q("INSERT INTO tracks(id,user_id,title,audio,lyrics,status,duration,created) VALUES(?,?,?,?,?,?,?,?)",
       (tid, u["id"], title[:80], str(path), lyrics.strip(), "queued", dur, time.time()))

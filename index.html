@@ -267,6 +267,14 @@ input[type=range]{accent-color:var(--acc)}
     <div><div class="h2" id="linesTitle">«Неземная»</div><div class="mute" style="font-size:12px" id="linesSub">Проверь, вовремя ли загорается строка</div></div></div>
   <div class="wave demo-only" id="wave"></div>
   <div class="mute" id="fragInfo" style="display:none"></div>
+  <div class="card row live-only" style="gap:12px;padding:12px">
+    <span id="lnCoverPrev" style="width:56px;height:56px;border-radius:12px;background:var(--card2) center/cover no-repeat;flex-shrink:0"></span>
+    <span style="flex:1;display:flex;flex-direction:column;gap:2px"><b style="font-size:15px">Обложка</b><span class="mute" id="lnCoverTxt" style="font-size:12px">Нужна для анимаций и сторис</span></span>
+    <label class="chip" for="lnCover" style="background:var(--card2);display:flex;align-items:center">Выбрать</label>
+    <input type="file" id="lnCover" accept="image/*" class="vh">
+  </div>
+  <div id="lineList" style="display:flex;flex-direction:column;gap:8px"></div>
+  <div class="mute" style="font-size:12px" id="linesNote">Жёлтым — припев, нашли сами. Шаг сдвига 0,1 с</div>
   <div class="card live-only" style="flex-direction:column;gap:12px;padding:14px">
     <div class="row" style="justify-content:space-between"><b style="font-size:15px">Фрагмент для эдита</b><span class="mute" id="fragLbl" style="font-variant-numeric:tabular-nums"></span></div>
     <div class="tm2"><label>Начало<input id="tmS" aria-label="Начало фрагмента" autocomplete="off"></label><label>Конец<input id="tmE" aria-label="Конец фрагмента" autocomplete="off"></label></div>
@@ -277,14 +285,6 @@ input[type=range]{accent-color:var(--acc)}
     </div>
     <div class="mute" style="font-size:12px">Нажми на время и впиши, например 1:23 · от 3 до 60 с</div>
   </div>
-  <div class="card row live-only" style="gap:12px;padding:12px">
-    <span id="lnCoverPrev" style="width:56px;height:56px;border-radius:12px;background:var(--card2) center/cover no-repeat;flex-shrink:0"></span>
-    <span style="flex:1;display:flex;flex-direction:column;gap:2px"><b style="font-size:15px">Обложка</b><span class="mute" id="lnCoverTxt" style="font-size:12px">Нужна для анимаций и сторис</span></span>
-    <label class="chip" for="lnCover" style="background:var(--card2);display:flex;align-items:center">Выбрать</label>
-    <input type="file" id="lnCover" accept="image/*" class="vh">
-  </div>
-  <div id="lineList" style="display:flex;flex-direction:column;gap:8px"></div>
-  <div class="mute" style="font-size:12px" id="linesNote">Жёлтым — припев, нашли сами. Шаг сдвига 0,1 с</div>
   <button class="btn acc" id="linesSave" data-go="home" data-toast="Трек в автопилоте ✓">Всё верно — в автопилот</button>
   <div class="mute" id="linesMsg" style="text-align:center;font-size:13px;min-height:18px"></div>
   <button class="live-only" id="linesDel" style="align-self:center;color:#ff6b6b;font-size:13px;padding:8px 12px">Удалить трек</button>
@@ -409,10 +409,10 @@ input[type=range]{accent-color:var(--acc)}
   </div>
   <div class="card mk">
     <div class="row" style="justify-content:space-between;flex-wrap:nowrap">
-      <div class="mkh" style="white-space:nowrap"><b>4</b>Текст песни</div>
+      <div class="mkh" style="white-space:nowrap"><b>4</b>Текст песни · обязательно</div>
       <button class="chip" id="upNoText" style="height:34px;padding:0 14px;font-size:13px;background:var(--card2);white-space:nowrap;flex-shrink:0">Нет текста</button>
     </div>
-    <textarea id="upLyrics" rows="8" placeholder="Необязательно. Вставь текст — строки встанут точнее. Без текста распознаем сами."></textarea>
+    <textarea id="upLyrics" rows="8" placeholder="Обязательно: вставь текст песни целиком, каждая строка с новой строки. По нему мы расставим строки по всему треку, а фрагмент для эдита ты выберешь потом."></textarea>
     <div class="mute" id="upNoTextInfo" style="display:none">Композиция без слов: эдит без субтитров, фрагмент выберем по самому яркому месту.</div>
   </div>
   <button class="btn acc" id="upSend" style="height:56px;font-size:16px">Загрузить</button>
@@ -1647,6 +1647,10 @@ $('#render').onclick = () => renderEdit().catch(err => {
     const f = $('#upFile').files[0]; if (!f) return toast('Выбери файл трека');
     const dur = await fileDuration(f);
     if (dur > 8 * 60) return toast('Трек длиннее 8 минут — загрузи сам трек, не сет');
+    if (!noText) {   // песня со словами: полный трек и полный текст, иначе строки не встанут на звук
+      if (dur && dur < 60) return toast('Загрузи трек целиком, не отрезок: фрагмент для эдита выберешь потом');
+      if ($('#upLyrics').value.trim().split(/\s+/).filter(Boolean).length < 8) return toast('Вставь текст песни целиком — он обязателен');
+    }
     const fd = new FormData(); fd.append('audio', f); fd.append('title', $('#upTitle').value); fd.append('lyrics', noText ? '' : $('#upLyrics').value); fd.append('instrumental', noText ? 'true' : 'false');
     const cv = $('#upCover').files[0]; if (cv) fd.append('cover', cv);
     const xhr = new XMLHttpRequest(); xhr.open('POST', A('api/tracks')); for (const k in H) xhr.setRequestHeader(k, H[k]);
