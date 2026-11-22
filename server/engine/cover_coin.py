@@ -72,6 +72,9 @@ def render(*, cover, audio, out, start, dur, font_path, fmt, fields, lines):
             keep.append((t_, s_))
     an = dict(an, hits=sorted(keep))
     SC, ANG, YO = simulate(an, N)
+    # удары мягче на ~60% и без резких фронтов
+    k_ = cv2.getGaussianKernel(15, 3.5)[:, 0]
+    SC, ANG, YO = (np.convolve(np.pad(a_ * 0.4, (7, 7), mode="edge"), k_, mode="valid") for a_ in (SC, ANG, YO))
     calm = not an["sound"]
 
     # ---------- обложка ----------
@@ -182,10 +185,15 @@ def render(*, cover, audio, out, start, dur, font_path, fmt, fields, lines):
     bgs = max(BW, BH)
     bg = cv2.resize(cov, (bgs, bgs), interpolation=cv2.INTER_AREA).astype(np.float32) / 255
     bg = bg[(bgs - BH) // 2:(bgs - BH) // 2 + BH, (bgs - BW) // 2:(bgs - BW) // 2 + BW]
+    bg_sharp = cv2.GaussianBlur(bg, (0, 0), 10)
     bg = cv2.GaussianBlur(bg, (0, 0), 50)
     grey = bg.mean(2, keepdims=True)
     bg = grey + (bg - grey) * 0.9
     bg = np.clip((bg - 0.45) * 1.2 + 0.45, 0, 1) * 0.5
+    bg_sharp = np.clip((bg_sharp - 0.45) * 1.2 + 0.45, 0, 1) * 0.5
+    nr = np.random.default_rng(11)
+    NF = [cv2.GaussianBlur(nr.random((H // 16, W // 16)).astype(np.float32), (0, 0), 3) for _ in range(9)]
+    NF = [(f - f.min()) / (f.max() - f.min() + 1e-6) for f in NF]
     yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
     vign = np.clip(1 - 0.7 * (np.sqrt(((xx - W / 2) / (W * 0.8)) ** 2 + ((yy - H / 2) / (H * 0.65)) ** 2)) ** 2.2, 0.2, 1)[..., None]
     del yy, xx
@@ -275,8 +283,15 @@ def render(*, cover, audio, out, start, dur, font_path, fmt, fields, lines):
         # фон дышит: масштаб и яркость пульсируют, на ударах сильнее
         z = 1.0 + 0.03 * t / dur + 0.10 * breath + 0.6 * sc_
         M = np.float32([[z, 0, W / 2 - BW / 2 * z + 4 * math.sin(t * 0.3)], [0, z, H / 2 - BH / 2 * z + 9 * math.cos(t * 0.23)]])
-        sway_x, sway_y = 5 * math.sin(t * 0.9), 4 * math.cos(t * 0.7)     # общее лёгкое покачивание: фон, карточка и надписи плывут вместе
+        sway_x, sway_y = 5 * math.sin(t * 0.9) + 16 * math.sin(TAU * t / 6.8), 4 * math.cos(t * 0.7) + 7 * math.sin(TAU * t / 5.3 + 0.8)     # общее лёгкое покачивание: фон, карточка и надписи плывут вместе
         canvas = cv2.warpAffine(bg, M, (W, H), borderMode=cv2.BORDER_REFLECT)
+        # фон хаотично проявляется: пятна резкости плывут по кадру, но полностью не проявляются (макс. ~45%)
+        ph_ = t / 2.4
+        k0 = int(ph_) % len(NF); fr_ = ph_ - int(ph_); fr_ = fr_ * fr_ * (3 - 2 * fr_)
+        nz = NF[k0] * (1 - fr_) + NF[(k0 + 1) % len(NF)] * fr_
+        mrev = np.clip((cv2.resize(nz, (W, H), interpolation=cv2.INTER_CUBIC) - 0.45) * 2.2, 0, 1) * 0.45 * min(1.0, t / 1.5)
+        sharp = cv2.warpAffine(bg_sharp, M, (W, H), borderMode=cv2.BORDER_REFLECT)
+        canvas = canvas * (1 - mrev[..., None]) + sharp * mrev[..., None]
         canvas *= 1 + 0.34 * breath + 1.0 * max(sc_, 0)
         # светящееся «дыхание» за карточкой: пульсирует с тем же вдохом
         canvas += blob(W / 2, card_cy0, 330, 430) * accent * (0.16 + 0.16 * breath)
@@ -298,9 +313,10 @@ def render(*, cover, audio, out, start, dur, font_path, fmt, fields, lines):
         zf = 1.0 + 1.15 * min(1.0, max(0.0, (t - fin_t) / FIN_DUR)) ** 2.3          # финал: наезжает на зрителя
         size = CP * lerp(1.95, 1.0, u) * (1 + sc_) * (1 + 0.012 * breath) * zf
         cy = lerp(H * 0.52, card_cy0, u) + yo_
-        ry = spin_angle(t) + ang_
-        rx = 6 * math.sin(TAU * t / 5.2) * ease_io((t - 2.4) / 1.0) + lerp(10, 0, u)
-        rz = lerp(-12, 0, u) + 0.3 * ang_
+        fl_on = ease_io((t - 1.5) / 1.5) * (1 - ease_io((t - fin_t) / 1.0))      # парение включается после посадки, в финале не мешает
+        ry = spin_angle(t) + ang_ + 5.5 * math.sin(TAU * t / 6.3) * fl_on
+        rx = 5.5 * math.sin(TAU * t / 7.7 + 1.0) * fl_on + lerp(10, 0, u)
+        rz = lerp(-12, 0, u) + 0.3 * ang_ + 1.2 * math.sin(TAU * t / 8.9) * fl_on
 
         gain = ease_out((t - 0.5) / 1.2)
         head = (t * TAU / 5.5) % TAU
@@ -324,9 +340,7 @@ def render(*, cover, audio, out, start, dur, font_path, fmt, fields, lines):
                 pos = -0.25 + 1.5 * ease_io(d / FLASH_D)
                 band = np.exp(-((S_DIAG - pos) / 0.07) ** 2) * 0.30 + np.exp(-((S_DIAG - pos) / 0.22) ** 2) * 0.08
                 rgb += (band[..., None] * MASK_FULL) * np.float32([1.0, 0.97, 0.92])
-        gi = (RING * glow_i * 0.8)[..., None]
-        rgb += gi * glow_col
-        layer_src[..., 3:4] = np.clip(al + gi * 0.9, 0, 1)
+        layer_src[..., 3:4] = al
 
         Mp = cv2.getPerspectiveTransform(src_pts, _project(W / 2 + sway_x, cy + sway_y, size, rx, ry, rz, f=1700.0))
         layer = cv2.warpPerspective(layer_src, Mp, (W, H), flags=cv2.INTER_LINEAR, borderValue=0)
@@ -338,7 +352,7 @@ def render(*, cover, audio, out, start, dur, font_path, fmt, fields, lines):
         sh = cv2.warpAffine(sh, np.float32([[1, 0, 0], [0, 1, 7]]), (W // 4, H // 4))
         canvas *= 1 - 0.5 * cv2.resize(sh, (W, H))[..., None]
         glow = cv2.GaussianBlur(cv2.resize(layer[..., :3], (W // 4, H // 4)), (0, 0), 16)
-        canvas += cv2.resize(glow, (W, H)) * (0.35 + 0.25 * lift)
+        canvas += cv2.resize(glow, (W, H)) * 0.06
         canvas = canvas * (1 - a) + layer[..., :3]
 
         # анаморфный луч через центр карточки на вспышке
