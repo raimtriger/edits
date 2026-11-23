@@ -327,6 +327,13 @@ async def save_cover(tid: str, cover: UploadFile) -> str:
     return str(path)
 
 
+def clean_title(t: str) -> str:
+    """Имена файлов из скачиваний: «Ivan_Dorn_-_Sinimi_61450226» -> «Ivan Dorn - Sinimi»."""
+    t = re.sub(r"[_]+", " ", t)
+    t = re.sub(r"\s*[\[(]?\d{6,}[\])]?\s*$", "", t)
+    return re.sub(r"\s+", " ", t).strip() or t
+
+
 def guess_artist(audio: Path, title: str) -> tuple[str, str]:
     """Артист не указан: берём из тегов файла, иначе делим «Артист - Название» (так часто называют файлы)."""
     try:
@@ -387,7 +394,7 @@ async def upload_track(audio: UploadFile = File(...), title: str = Form(""), lyr
         if len(lyrics.split()) < 8:
             path.unlink(missing_ok=True)
             raise HTTPException(400, "вставь текст песни целиком — он обязателен")
-    title = title.strip() or Path(audio.filename or "Трек").stem
+    title = clean_title(title.strip() or Path(audio.filename or "Трек").stem)
     artist = artist.strip()
     if not artist:
         artist, title = await asyncio.to_thread(guess_artist, path, title)
@@ -649,12 +656,16 @@ def tg_of(user_id: int) -> int | None:
     return r["tg_id"] if r else None
 
 
-def run_job(cmd: str, args: dict, timeout: int = 1800) -> dict:
+def run_job(cmd: str, args: dict, timeout: int = 5400) -> dict:
     """Тяжёлая работа — в отдельном процессе с низким приоритетом: сервер аппки не тормозит."""
     import subprocess
     import sys
-    p = subprocess.run(["nice", "-n", "15", sys.executable, "-m", "server.engine.job", cmd, json.dumps(args, ensure_ascii=False)],
-                       cwd=str(ROOT), capture_output=True, text=True, timeout=timeout)
+    try:
+        p = subprocess.run(["nice", "-n", "15", sys.executable, "-m", "server.engine.job", cmd, json.dumps(args, ensure_ascii=False)],
+                           cwd=str(ROOT), capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        log.warning("job %s: таймаут %s с", cmd, timeout)
+        raise RuntimeError("не уложились по времени: сервер занят. Удали трек и загрузи его снова через несколько минут")
     if p.returncode != 0:
         tail = (p.stderr or "").strip().splitlines()[-1:] or ["неизвестная ошибка"]
         log.warning("job %s failed: %s", cmd, (p.stderr or "")[-1500:])

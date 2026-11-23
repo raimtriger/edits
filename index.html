@@ -1677,7 +1677,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
   $('#upCover').onchange = e => { fileCover = null; const f = e.target.files[0]; if (!f) return;
     $('#upCoverPrev').style.backgroundImage = `url('${URL.createObjectURL(f)}')`; $('#upCoverL').textContent = 'Сменить картинку'; };
   $('#upFile').onchange = e => { const f = e.target.files[0]; if (!f) return; $('#upFileL').textContent = f.name;
-    const base = f.name.replace(/\.[^.]+$/, ''), m = base.match(/^\s*(.{1,40}?)\s+[-–—]\s+(.+)$/);    // «Артист - Название» в имени файла
+    const base = f.name.replace(/\.[^.]+$/, '').replace(/_+/g, ' ').replace(/\s*[\[(]?\d{6,}[\])]?\s*$/, '').replace(/\s+/g, ' ').trim(), m = base.match(/^\s*(.{1,40}?)\s+[-–—]\s+(.+)$/);    // «Артист - Название» в имени файла
     id3Cover(f).then(bl => { if (!bl || $('#upCover').files[0]) return; fileCover = bl;
       $('#upCoverPrev').style.backgroundImage = `url('${URL.createObjectURL(bl)}')`; $('#upCoverL').textContent = 'Обложка из файла · сменить'; });
     if (!$('#upTitle').value) { if (m) { $('#upTitle').value = m[2].trim(); if (!$('#upArtist').value) $('#upArtist').value = m[1].trim(); } else $('#upTitle').value = base; } };
