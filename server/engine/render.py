@@ -33,7 +33,7 @@ class Style:
     color: str = "FFFFFF"       # цвет текста, hex RRGGBB
     cut: float = 1.0            # средняя длина склейки, сек
     darken: float = 0.10        # затемнение под текст (0..0.4)
-    show_next: bool = True      # показывать следующую строку блекло (режим line)
+    show_next: bool = False     # показывать следующую строку блекло (режим line)
     watermark: str | None = None  # надпись внизу (бесплатный тариф)
     fonts_dir: str | None = None  # папка со шрифтами для libass
     seed: int | None = None

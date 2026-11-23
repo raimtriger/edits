@@ -28,7 +28,7 @@
 html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:var(--body)}
 button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;padding:0}
 a{color:inherit;text-decoration:none}
-#app{max-width:480px;height:var(--tg-viewport-stable-height,100%);margin:0 auto;display:flex;flex-direction:column;position:relative;overflow:hidden}
+#app{max-width:480px;height:100vh;height:100dvh;margin:0 auto;display:flex;flex-direction:column;position:relative;overflow:hidden}
 main{flex:1;overflow-y:auto;padding:18px 18px 28px;-webkit-overflow-scrolling:touch}
 .screen{display:none;flex-direction:column;gap:14px;animation:in .35s ease}
 .screen.on{display:flex}
@@ -46,6 +46,8 @@ main{flex:1;overflow-y:auto;padding:18px 18px 28px;-webkit-overflow-scrolling:to
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .back{width:40px;height:40px;border-radius:12px;background:var(--card);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+#liveTracks::-webkit-scrollbar{display:none}
+#liveTracks .chip{flex:none;max-width:78%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .chip{height:38px;padding:0 14px;border-radius:999px;background:var(--card);font-weight:600;font-size:13px}
 .chip.on{background:var(--acc);color:#0B0B0C}
 .seg{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:4px;border-radius:14px;background:var(--card)}
@@ -296,12 +298,12 @@ input[type=range]{accent-color:var(--acc)}
   <div class="seg live-only" id="kindSeg" style="grid-template-columns:1fr 1fr"><button class="on" data-k="edit">Эдит</button><button data-k="cover">Обложка</button></div>
   <div class="seg demo-only" id="seg"><button class="on" data-t="edits">Эдиты</button><button data-t="stories">Сторис</button><button data-t="youtube">YouTube</button></div>
   <div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Трек</span>
-    <div class="card row" id="studioTrack" style="justify-content:space-between;padding:12px 14px"><span style="font-weight:600">«30» · припев 0:12–0:33</span><span class="mute">сменить</span></div><div id="liveTracks" style="display:none;flex-wrap:wrap;gap:8px"></div></div>
+    <div class="card row" id="studioTrack" style="justify-content:space-between;padding:12px 14px"><span style="font-weight:600">«30» · припев 0:12–0:33</span><span class="mute">сменить</span></div><div id="liveTracks" style="display:none;flex-wrap:nowrap;gap:8px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding:2px 0 6px"></div></div>
   <div id="tplBlock" class="live-only" style="flex-direction:column;gap:8px"><span class="lbl">Мои шаблоны</span>
     <div id="tplRow" style="display:flex;flex-wrap:wrap;gap:8px"></div>
     <div id="recRow" style="display:none;flex-wrap:wrap;gap:8px;align-items:center"></div></div>
   <div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Футажи</span><div id="foot" style="display:flex;flex-wrap:wrap;gap:8px"></div>
-    <button class="chip live-only" id="pickBtn" style="height:42px;border:1.5px dashed #3A3A40;background:transparent;justify-content:center">Выбрать кадры вручную</button></div>
+    <button class="chip live-only" id="pickBtn" style="flex:none;width:100%;height:46px;min-height:46px;border:1.5px dashed #3A3A40;background:transparent;display:flex;align-items:center;justify-content:center">Выбрать кадры вручную</button></div>
   <div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Текст</span>
     <div class="grid3"><button class="tog on" data-m="line">Строкой</button><button class="tog" data-m="word">По слову</button><button class="tog" id="bw">Ч/Б</button></div>
     <div class="live-only" style="flex-direction:column;gap:8px;margin-top:6px"><span class="lbl">Цвет текста</span>
@@ -1335,6 +1337,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
     if (!ready.find(t => t.id === selTrack)) selTrack = ready[0] ? ready[0].id : null;
     box.innerHTML = ready.length ? ready.map(t => `<button class="chip ${t.id === selTrack ? 'on' : ''}" data-st="${t.id}">«${esc(t.title)}»</button>`).join('')
       : '<span class="mute">Сначала загрузи трек во вкладке «Треки»</span>';
+    const on = box.querySelector('.chip.on'); if (on) on.scrollIntoView({ inline: 'center', block: 'nearest' });
     if (typeof paintCover === 'function' && selKind === 'cover') paintCover();
   }
   $('#liveTracks').onclick = e => { const b = e.target.closest('[data-st]'); if (!b) return; selTrack = b.dataset.st; renderStudioTracks(); };
