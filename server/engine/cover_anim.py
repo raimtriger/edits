@@ -258,7 +258,7 @@ def render_cover_anim(cover: str, audio: str, out: str, start: float, dur: float
             canvas = 1 - (1 - canvas) * (1 - lk * 0.28 * np.float32([0.85, 0.95, 0.75]))
         canvas += particles(t) * (1 - ease_in((t - (dur - 1.2)) / 1.0))
         canvas *= vign
-        canvas *= min(1, t / 0.25) * (1 - ease_io((t - (dur - 0.7)) / 0.7))
+        canvas *= (0.4 + 0.6 * min(1, t / 0.25)) * (1 - ease_io((t - (dur - 0.7)) / 0.7))
         canvas += rng.normal(0, 0.018, (H, W, 1)).astype(np.float32)
         return (np.clip(canvas, 0, 1) * 255).astype(np.uint8)
 

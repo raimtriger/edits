@@ -9,6 +9,9 @@
     (стороны чередуются) и подпрыгивает вверх; сила толчка зависит от силы удара и от того, насколько
     громкий и плотный звук в этот момент — динамичный трек = заметнее, тихое место = едва-едва;
   • звука нет (тишина) — только медленное спокойное покачивание и «дыхание»;
+  • карточка всё время дышит (±3 %) и плывёт в 3D, фон дышит чуть иначе;
+  • буквы влетают по одной (из разных сторон, с поворотом и размытием), потом покачиваются волной,
+    а на каждом ударе подпрыгивают — волной от первой буквы к последней;
   • по буквам текста бежит волна яркости; на ударах текст чуть светлее.
 Лёгкое (numpy + cv2 + Pillow): фон размывается один раз, на кадр — карточка и текст.
 """
@@ -102,14 +105,14 @@ def simulate(an: dict, N: int):
                 if th < INTRO:
                     continue
                 power = st * (0.35 + 0.9 * float(an["dyn"][min(i, N - 1)]))      # ~0.1 … 1.25
-                vs += 0.09 * ws * power
+                vs += 0.15 * ws * power
                 sign = -sign
-                va += sign * 2.6 * wa * power
-                vy += -9.0 * wy * power
+                va += sign * 3.4 * wa * power
+                vy += -12.0 * wy * power
             vs += (-ws * ws * xs - 2 * zs * ws * vs) * dt; xs += vs * dt
             va += (-wa * wa * xa - 2 * za * wa * va) * dt; xa += va * dt
             vy += (-wy * wy * xy - 2 * zy * wy * vy) * dt; xy += vy * dt
-        sc[i], ang[i], yo[i] = min(xs, 0.09), max(-4.0, min(4.0, xa)), max(-14.0, min(14.0, xy))
+        sc[i], ang[i], yo[i] = min(xs, 0.15), max(-6.0, min(6.0, xa)), max(-20.0, min(20.0, xy))
     return sc, ang, yo
 
 
@@ -247,22 +250,75 @@ def render(*, cover, audio, out, start, dur, font_path, fmt, fields, lines):
         al = alpha_buf[ya:yb, xa:xb]
         al[:] = al * (1 - s) + s
 
+    # у каждой буквы свой «характер» полёта: откуда прилетает, как повёрнута, на сколько отстаёт
+    lrng = np.random.default_rng(5)
+    fly = [[(lrng.uniform(-190, 190), lrng.uniform(110, 330), lrng.uniform(-70, 70), lrng.uniform(0.9, 1.6))
+            for _ in range(ln.n)] for ln, _ in blocks]
+    hit_t = np.array([h[0] for h in an["hits"] if h[0] >= INTRO] or [-9.0])
+    hit_p = np.array([h[1] * (0.35 + 0.9 * float(an["dyn"][min(int(h[0] * FPS), N - 1)]))
+                      for h in an["hits"] if h[0] >= INTRO] or [0.0])
+    BOUNCE = 0.30
+
+    def ease_back(x):
+        x = min(max(x, 0.0), 1.0)
+        c1 = 1.9; c3 = c1 + 1
+        return 1 + c3 * (x - 1) ** 3 + c1 * (x - 1) ** 2
+
+    def letter_patch(a, cx, cy, ang, scl, sg):
+        """Буква: поворот и масштаб вокруг центра, смещение с долями пикселя; возвращает (патч, x, y) для blit_mask."""
+        h, w = a.shape[:2]
+        pw, ph = int(w * 2.3) + 2, int(h * 2.3) + 2
+        M = cv2.getRotationMatrix2D((w / 2, h / 2), ang, scl)
+        fx, fy = cx - int(cx), cy - int(cy)
+        M[0, 2] += pw / 2 - w / 2 + fx
+        M[1, 2] += ph / 2 - h / 2 + fy
+        im = cv2.warpAffine(a[..., 0] if a.ndim == 3 else a, M, (pw, ph), flags=cv2.INTER_LINEAR, borderValue=0)
+        if sg > 0.4:
+            im = cv2.GaussianBlur(im, (0, 0), sg)
+        return im[..., None], int(cx) - pw // 2, int(cy) - ph // 2
+
     def draw_lines(canvas, alpha_buf, t, lift):
         for li, ((ln, _), yy) in enumerate(zip(blocks, ypos)):
             x0 = W / 2 - ln.total / 2
             t0 = 0.95 + li * 0.3
             for i, (a, gx) in enumerate(ln.items):
-                k = ease_out((t - t0 - i * 0.035) / 0.45)
+                tin = t - t0 - i * 0.05
+                k = ease_out(tin / 0.5)
                 if k <= 0:
                     continue
+                kb = ease_back(tin / 0.75)                       # пружинная посадка с перелётом
+                dx0, dy0, rot0, sc0 = fly[li][i]
+                h, w = a.shape[:2]
+                cx = x0 + gx + w / 2 + (1 - kb) * dx0
+                cy = yy + h / 2 + (1 - kb) * dy0
+                ang = (1 - kb) * rot0
+                scl = 1 + (1 - kb) * (sc0 - 1) * 0.9
+                # после посадки: волна покачивания по строке + прыжок на ударах (волной слева направо)
+                live = ease_io((tin - 0.6) / 0.6)
+                ph_i = i * 0.11 + li * 0.23
+                cy += live * 5.5 * math.sin(TAU * (t * 0.42 + ph_i))
+                ang += live * 2.4 * math.sin(TAU * (t * 0.31 + ph_i * 1.3))
+                bump = 0.0
+                if tin > 0.5:
+                    lo = np.searchsorted(hit_t, t - BOUNCE - 0.025 * ln.n)
+                    for hi_ in range(lo, len(hit_t)):
+                        tau = t - hit_t[hi_] - 0.025 * i
+                        if tau < 0:
+                            if hit_t[hi_] > t:
+                                break
+                            continue
+                        if tau < BOUNCE:
+                            bump += hit_p[hi_] * math.sin(math.pi * tau / BOUNCE)
+                bump = min(bump, 1.6)
+                cy -= 13 * bump
+                scl *= 1 + 0.10 * bump
+                ang += 3.0 * bump * math.sin(TAU * (i * 0.37 + li * 0.2))
                 ph = ((t * 0.36 - li * 0.23) % 1.0) * 1.5 - 0.25
                 dip = math.exp(-(((i / ln.n) - ph) / 0.11) ** 2)
-                shade = min(1.0, (1.0 - 0.42 * dip) * (1 + 0.1 * lift))
-                a2 = a
-                if k < 1:
-                    sg = (1 - k) * 7
-                    a2 = cv2.GaussianBlur(a, (0, 0), sg)[..., None] if sg > 0.4 else a
-                blit_mask(canvas, alpha_buf, a2, x0 + gx, yy + (1 - k) * 18, np.float32([1, 1, 1]) * shade, k)
+                shade = min(1.0, (1.0 - 0.42 * dip) * (1 + 0.1 * lift + 0.12 * bump))
+                sg = (1 - k) * 7
+                patch, px, py = letter_patch(a, cx, cy, ang, scl, sg)
+                blit_mask(canvas, alpha_buf, patch, px, py, np.float32([1, 1, 1]) * shade, k)
 
     # ---------- кадр ----------
     calm = not an["sound"]
@@ -270,13 +326,13 @@ def render(*, cover, audio, out, start, dur, font_path, fmt, fields, lines):
     def frame(i):
         t = i / FPS
         if calm:       # тишина: медленное спокойное покачивание
-            sc_, ang_, yo_ = 0.012 * math.sin(TAU * t / 5.0 + 1.0), 1.0 * math.sin(TAU * t / 7.0), 4 * math.sin(TAU * t / 6.0)
+            sc_, ang_, yo_ = 0.02 * math.sin(TAU * t / 5.0 + 1.0), 1.6 * math.sin(TAU * t / 7.0), 6 * math.sin(TAU * t / 6.0)
         else:
             sc_, ang_, yo_ = SC[i], ANG[i], YO[i]
         lift = max(0.0, sc_) / 0.05            # 0..~1 — «сила толчка» для подсветки
 
         # фон: медленный дрейф + лёгкий вдох на толчках
-        z = 1.0 + 0.05 * t / dur + 0.5 * sc_
+        z = 1.0 + 0.05 * t / dur + 0.5 * sc_ + 0.025 * math.sin(TAU * t / 4.4)
         M = np.float32([[z, 0, W / 2 - BW / 2 * z + 10 * math.sin(t * 0.35)],
                         [0, z, H / 2 - BH / 2 * z + 8 * math.cos(t * 0.27)]])
         canvas = cv2.warpAffine(bg, M, (W, H), borderMode=cv2.BORDER_REFLECT)
@@ -284,10 +340,13 @@ def render(*, cover, audio, out, start, dur, font_path, fmt, fields, lines):
 
         # карточка: залёт -> дыхание + удары
         u = ease_out(t / INTRO)
-        breathe = 1 + 0.012 * math.sin(TAU * t / 3.6)
+        breathe = 1 + 0.032 * math.sin(TAU * t / 3.4) + 0.008 * math.sin(TAU * t / 1.3)
         size = CP * lerp(1.95, 1.0, u) * breathe * (1 + sc_)
-        cy = lerp(H * 0.56, card_cy, u) + yo_ + 4 * math.sin(TAU * t / 3.3) * u
-        rx, ry, rz = lerp(13, 0, u), lerp(-58, 0, ease_out(t / (INTRO * 0.95))), lerp(-9, 0, u) + ang_
+        cy = lerp(H * 0.56, card_cy, u) + yo_ + 9 * math.sin(TAU * t / 3.3) * u
+        sway = ease_io((t - INTRO) / 1.2)
+        rx = lerp(13, 0, u) + 4.0 * math.sin(TAU * t / 5.3) * sway
+        ry = lerp(-58, 0, ease_out(t / (INTRO * 0.95))) + 6.0 * math.sin(TAU * t / 4.1 + 1.0) * sway
+        rz = lerp(-9, 0, u) + ang_ + 1.3 * math.sin(TAU * t / 6.7) * sway
         Mp = cv2.getPerspectiveTransform(src_pts, _project(W / 2, cy, size, rx, ry, rz))
         layer = cv2.warpPerspective(PAD, Mp, (W, H), flags=cv2.INTER_LINEAR, borderValue=0)
         bl = 15 * (1 - ease_out(t / 1.0))
@@ -307,7 +366,7 @@ def render(*, cover, audio, out, start, dur, font_path, fmt, fields, lines):
         canvas += cv2.resize(glow, (W, H)) * (0.30 + 0.12 * lift)
         canvas = canvas * (1 - tal) + tcol
 
-        canvas *= min(1, t / 0.25) * (1 - ease_io((t - (dur - 0.7)) / 0.7))
+        canvas *= (0.4 + 0.6 * min(1, t / 0.25)) * (1 - ease_io((t - (dur - 0.7)) / 0.7))
         canvas += rng.normal(0, 0.012, (H, W, 1)).astype(np.float32)
         return (np.clip(canvas, 0, 1) * 255).astype(np.uint8)
 

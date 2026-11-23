@@ -432,7 +432,7 @@ def render(*, cover, audio, out, start, dur, font_path, fmt, fields, lines, icon
         canvas = canvas * (1 - tal * tf) + tcol * tf
 
         canvas *= vign
-        canvas *= min(1, t / 0.2) * (1 - ease_io((t - (dur - 0.7)) / 0.7))
+        canvas *= (0.4 + 0.6 * min(1, t / 0.2)) * (1 - ease_io((t - (dur - 0.7)) / 0.7))
         canvas += rng.normal(0, 0.012, (H, W, 1)).astype(np.float32)
         out_img = (np.clip(canvas, 0, 1) * 255).astype(np.uint8)
         if debug_safe:
