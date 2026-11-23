@@ -239,6 +239,26 @@ def footage_thumb(cid: str):
     return FileResponse(th, headers={"Cache-Control": "max-age=604800"})
 
 
+@app.get("/api/footage/preview/{cid}.mp4")
+def footage_preview(cid: str):
+    """Короткая лёгкая версия кадра (6 с, 360x640, без звука) для просмотра в выборе кадров."""
+    src = clip_index().get(cid)
+    if not src:
+        raise HTTPException(404)
+    pv = DATA / "thumbs" / f"{cid}.mp4"
+    if not pv.exists():
+        pv.parent.mkdir(parents=True, exist_ok=True)
+        tmp = pv.with_suffix(".tmp.mp4")
+        r = subprocess.run(["nice", "-n", "15", "ffmpeg", "-v", "error", "-y", "-i", str(src), "-t", "6", "-an",
+                            "-vf", "scale=360:640:force_original_aspect_ratio=increase,crop=360:640,fps=24",
+                            "-c:v", "libx264", "-preset", "veryfast", "-crf", "30", "-pix_fmt", "yuv420p",
+                            "-movflags", "+faststart", str(tmp)], capture_output=True, timeout=120)
+        if r.returncode != 0 or not tmp.exists():
+            raise HTTPException(404)
+        tmp.replace(pv)
+    return FileResponse(pv, media_type="video/mp4", headers={"Cache-Control": "max-age=604800"})
+
+
 def user_font(u_id: int, key: str):
     if not key.startswith("u:"):
         return None
