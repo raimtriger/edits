@@ -656,12 +656,12 @@ def tg_of(user_id: int) -> int | None:
     return r["tg_id"] if r else None
 
 
-def run_job(cmd: str, args: dict, timeout: int = 5400) -> dict:
+def run_job(cmd: str, args: dict, timeout: int = 5400, nice: int = 15) -> dict:
     """Тяжёлая работа — в отдельном процессе с низким приоритетом: сервер аппки не тормозит."""
     import subprocess
     import sys
     try:
-        p = subprocess.run(["nice", "-n", "15", sys.executable, "-m", "server.engine.job", cmd, json.dumps(args, ensure_ascii=False)],
+        p = subprocess.run(["nice", "-n", str(nice), sys.executable, "-m", "server.engine.job", cmd, json.dumps(args, ensure_ascii=False)],
                            cwd=str(ROOT), capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
         log.warning("job %s: таймаут %s с", cmd, timeout)
@@ -710,7 +710,7 @@ def process_track(t: sqlite3.Row):
     if FAKE_ASR:
         words, segs = align.fake_transcribe(t["lyrics"] or "ля ля ля", dur)
     else:
-        r = run_job("transcribe", {"audio": t["audio"], "lyrics": t["lyrics"]})
+        r = run_job("transcribe", {"audio": t["audio"], "lyrics": t["lyrics"]}, nice=5)   # nice 15 голодал рядом с рендерами автопостинга и не укладывался в полчаса
         words = [align.Word(w, s, e) for w, s, e in r["words"]]
         segs = [tuple(x) for x in r["segs"]]
     lines = align.align_lines(lyr, words, dur) if lyr else align.lines_from_segments(segs)
