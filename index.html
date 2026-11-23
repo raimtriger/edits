@@ -1638,10 +1638,48 @@ $('#render').onclick = () => renderEdit().catch(err => {
     $('#upLyrics').style.display = noText ? 'none' : '';
     $('#upNoTextInfo').style.display = noText ? 'block' : 'none';
   };
-  $('#upCover').onchange = e => { const f = e.target.files[0]; if (!f) return;
+  /* обложка, вшитая в mp3 (ID3v2 APIC) — показываем в превью ещё до загрузки; m4a и прочее подхватит сервер */
+  async function id3Cover(file) {
+    try {
+      const head = new Uint8Array(await file.slice(0, 10).arrayBuffer());
+      if (head[0] !== 0x49 || head[1] !== 0x44 || head[2] !== 0x33) return null;
+      const ver = head[3], flags = head[5];
+      const size = (head[6] << 21) | (head[7] << 14) | (head[8] << 7) | head[9];
+      const b = new Uint8Array(await file.slice(10, 10 + Math.min(size, 6 * 1048576)).arrayBuffer());
+      let p = 0;
+      if (flags & 0x40) { const es = ver === 4 ? ((b[0] << 21) | (b[1] << 14) | (b[2] << 7) | b[3]) : ((b[0] << 24) | (b[1] << 16) | (b[2] << 8) | b[3]) + 4; p = es; }
+      const hl = ver === 2 ? 6 : 10;
+      while (p + hl < b.length) {
+        const id = String.fromCharCode(b[p], b[p + 1], b[p + 2], ver === 2 ? 0 : b[p + 3]).replace(/\0/g, '');
+        if (!/^[A-Z0-9]{3,4}$/.test(id)) break;
+        let fs;
+        if (ver === 2) fs = (b[p + 3] << 16) | (b[p + 4] << 8) | b[p + 5];
+        else if (ver === 4) fs = (b[p + 4] << 21) | (b[p + 5] << 14) | (b[p + 6] << 7) | b[p + 7];
+        else fs = ((b[p + 4] << 24) | (b[p + 5] << 16) | (b[p + 6] << 8) | b[p + 7]) >>> 0;
+        const d = p + hl; p = d + fs;
+        if (fs <= 0 || p > b.length) break;
+        if (id !== 'APIC' && id !== 'PIC') continue;
+        const enc = b[d]; let q = d + 1, mime;
+        if (id === 'PIC') { mime = 'image/' + (String.fromCharCode(b[q], b[q + 1], b[q + 2]).toLowerCase() === 'png' ? 'png' : 'jpeg'); q += 3; }
+        else { const s = q; while (b[q] !== 0 && q < p) q++; mime = String.fromCharCode(...b.slice(s, q)) || 'image/jpeg'; q++; }
+        q++;                                              // тип картинки
+        if (enc === 1 || enc === 2) { while (q + 1 < p && !(b[q] === 0 && b[q + 1] === 0)) q += 2; q += 2; }   // описание UTF-16
+        else { while (q < p && b[q] !== 0) q++; q++; }
+        if (q >= p) return null;
+        const img = b.slice(q, p);
+        if (mime === 'image/jpg' || !/^image\//.test(mime)) mime = (img[0] === 0x89) ? 'image/png' : 'image/jpeg';
+        return new Blob([img], { type: mime });
+      }
+    } catch (e) {}
+    return null;
+  }
+  let fileCover = null;
+  $('#upCover').onchange = e => { fileCover = null; const f = e.target.files[0]; if (!f) return;
     $('#upCoverPrev').style.backgroundImage = `url('${URL.createObjectURL(f)}')`; $('#upCoverL').textContent = 'Сменить картинку'; };
   $('#upFile').onchange = e => { const f = e.target.files[0]; if (!f) return; $('#upFileL').textContent = f.name;
     const base = f.name.replace(/\.[^.]+$/, ''), m = base.match(/^\s*(.{1,40}?)\s+[-–—]\s+(.+)$/);    // «Артист - Название» в имени файла
+    id3Cover(f).then(bl => { if (!bl || $('#upCover').files[0]) return; fileCover = bl;
+      $('#upCoverPrev').style.backgroundImage = `url('${URL.createObjectURL(bl)}')`; $('#upCoverL').textContent = 'Обложка из файла · сменить'; });
     if (!$('#upTitle').value) { if (m) { $('#upTitle').value = m[2].trim(); if (!$('#upArtist').value) $('#upArtist').value = m[1].trim(); } else $('#upTitle').value = base; } };
   const fileDuration = f => new Promise(res => { const a = new Audio(); a.preload = 'metadata';
     a.onloadedmetadata = () => { res(a.duration); URL.revokeObjectURL(a.src); }; a.onerror = () => res(0); a.src = URL.createObjectURL(f); });
@@ -1654,7 +1692,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
       if ($('#upLyrics').value.trim().split(/\s+/).filter(Boolean).length < 8) return toast('Вставь текст песни целиком — он обязателен');
     }
     const fd = new FormData(); fd.append('audio', f); fd.append('title', $('#upTitle').value); fd.append('artist', $('#upArtist').value); fd.append('lyrics', noText ? '' : $('#upLyrics').value); fd.append('instrumental', noText ? 'true' : 'false');
-    const cv = $('#upCover').files[0]; if (cv) fd.append('cover', cv);
+    const cv = $('#upCover').files[0]; if (cv) fd.append('cover', cv); else if (fileCover) fd.append('cover', new File([fileCover], 'cover.jpg', { type: fileCover.type }));
     const xhr = new XMLHttpRequest(); xhr.open('POST', A('api/tracks')); for (const k in H) xhr.setRequestHeader(k, H[k]);
     $('#upProg').style.display = 'block'; $('#upSend').disabled = true; $('#upSend').textContent = 'Загружаем…';
     xhr.upload.onprogress = e => { if (e.lengthComputable) $('#upBar').style.width = (e.loaded / e.total * 100) + '%'; };
@@ -1662,7 +1700,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
     xhr.onload = () => { done();
       if (xhr.status === 200) { toast('Загружено! Распознаём текст…'); $('#upFile').value = ''; $('#upFileL').textContent = 'Выбрать mp3 или wav';
         $('#upTitle').value = ''; $('#upArtist').value = ''; $('#upLyrics').value = ''; $('#upCover').value = '';
-        $('#upCoverPrev').style.backgroundImage = ''; $('#upCoverL').textContent = 'Выбрать картинку'; go('tracks'); }
+        $('#upCoverPrev').style.backgroundImage = ''; $('#upCoverL').textContent = 'Выбрать картинку'; fileCover = null; go('tracks'); }
       else { let m = 'Ошибка ' + xhr.status; try { m = JSON.parse(xhr.responseText).detail || m; } catch (e) {} toast(m); } };
     xhr.onerror = () => { done(); toast('Сеть отвалилась, попробуй ещё'); };
     xhr.send(fd);
