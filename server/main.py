@@ -84,6 +84,8 @@ with lock:
     cols = [r[1] for r in db.execute("PRAGMA table_info(tracks)")]
     if "cover" not in cols:
         db.execute("ALTER TABLE tracks ADD COLUMN cover TEXT")  # обложка трека
+    if "artist" not in cols:
+        db.execute("ALTER TABLE tracks ADD COLUMN artist TEXT DEFAULT ''")  # имя артиста
     if "instrumental" not in cols:
         db.execute("ALTER TABLE tracks ADD COLUMN instrumental INTEGER DEFAULT 0")  # композиция без слов
     ucols = [r[1] for r in db.execute("PRAGMA table_info(users)")]
@@ -151,7 +153,7 @@ app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_methods=["G
 
 
 def track_json(t: sqlite3.Row) -> dict:
-    return {"id": t["id"], "title": t["title"], "status": t["status"], "error": t["error"],
+    return {"id": t["id"], "title": t["title"], "artist": t["artist"] or "", "status": t["status"], "error": t["error"],
             "duration": t["duration"], "frag_start": t["frag_start"], "frag_end": t["frag_end"],
             "lines": json.loads(t["lines"]) if t["lines"] else [],
             "instrumental": bool(t["instrumental"]),
@@ -325,6 +327,21 @@ async def save_cover(tid: str, cover: UploadFile) -> str:
     return str(path)
 
 
+def guess_artist(audio: Path, title: str) -> tuple[str, str]:
+    """Артист не указан: берём из тегов файла, иначе делим «Артист - Название» (так часто называют файлы)."""
+    try:
+        r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format_tags=artist,title", "-of", "json", str(audio)], capture_output=True, text=True, timeout=20)
+        tags = {k.lower(): v for k, v in (json.loads(r.stdout or "{}").get("format", {}).get("tags") or {}).items()}
+        if tags.get("artist"):
+            return tags["artist"].strip(), title
+    except Exception:
+        pass
+    m = re.match(r"^\s*(.{1,40}?)\s+[-–—]\s+(.+)$", title)
+    if m:
+        return m.group(1).strip(), m.group(2).strip()
+    return "", title
+
+
 def embedded_cover(audio: Path, tid: str) -> str | None:
     """Обложка, вшитая в mp3/m4a/flac (ID3 APIC) — та самая, что Telegram показывает у вышедших треков."""
     out = DATA / "covers" / f"{tid}.jpg"
@@ -341,7 +358,7 @@ def embedded_cover(audio: Path, tid: str) -> str | None:
 
 @app.post("/api/tracks")
 async def upload_track(audio: UploadFile = File(...), title: str = Form(""), lyrics: str = Form(""),
-                       instrumental: bool = Form(False),
+                       instrumental: bool = Form(False), artist: str = Form(""),
                        cover: UploadFile | None = File(None), u=Depends(current_user)):
     tid = uuid.uuid4().hex[:12]
     ext = (Path(audio.filename or "a.mp3").suffix or ".mp3").lower()[:6]
@@ -371,8 +388,11 @@ async def upload_track(audio: UploadFile = File(...), title: str = Form(""), lyr
             path.unlink(missing_ok=True)
             raise HTTPException(400, "вставь текст песни целиком — он обязателен")
     title = title.strip() or Path(audio.filename or "Трек").stem
-    q("INSERT INTO tracks(id,user_id,title,audio,lyrics,status,duration,created) VALUES(?,?,?,?,?,?,?,?)",
-      (tid, u["id"], title[:80], str(path), lyrics.strip(), "queued", dur, time.time()))
+    artist = artist.strip()
+    if not artist:
+        artist, title = await asyncio.to_thread(guess_artist, path, title)
+    q("INSERT INTO tracks(id,user_id,title,artist,audio,lyrics,status,duration,created) VALUES(?,?,?,?,?,?,?,?,?)",
+      (tid, u["id"], title[:80], artist[:60], str(path), lyrics.strip(), "queued", dur, time.time()))
     if instrumental:
         q("UPDATE tracks SET instrumental=1, lyrics='' WHERE id=?", (tid,))
     if cover is not None and cover.filename:
@@ -528,7 +548,7 @@ def make_edit(body: EditIn, u=Depends(current_user)):
         raw = dict(body.fields or {})
         raw.setdefault("caption", body.caption)
         cover_params = {"style": body.style, "format": body.format,
-                        "fields": cover_styles.clean_fields(body.style, raw, t["title"])}
+                        "fields": cover_styles.clean_fields(body.style, raw, t["title"], t["artist"] or "")}
     if q("SELECT 1 FROM edits WHERE user_id=? AND status IN ('queued','rendering')", (u["id"],), one=True):     # пока монтируется один ролик, второй не принимаем — для всех, включая владельца
         raise HTTPException(429, "один ролик уже монтируется — дождись его, видео придёт в бот")
     if not u["is_owner"]:

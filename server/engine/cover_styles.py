@@ -35,7 +35,7 @@ FORMAT_BY_ID = {f["id"]: f for f in FORMATS}
 FIELDS = {
     "caption": {"label": "Надпись", "default": "ПРЕМЬЕРА", "max": 24, "upper": True},
     "title": {"label": "Название трека", "default": "", "max": 40, "upper": False, "from_track": True},
-    "artist": {"label": "Артист", "default": "", "max": 32, "upper": False},
+    "artist": {"label": "Артист", "default": "", "max": 32, "upper": False, "from_track": "artist"},
     "subtitle": {"label": "Подзаголовок", "default": "", "placeholder": "(prod. by …)", "max": 40, "upper": False},
     "date": {"label": "Дата релиза", "default": "", "placeholder": "18 НОЯБРЯ", "max": 16, "upper": True},
 }
@@ -128,7 +128,7 @@ def check_request(style_id: str, fmt_id: str) -> str | None:
     return None
 
 
-def clean_fields(style_id: str, raw: dict | None, track_title: str = "") -> dict:
+def clean_fields(style_id: str, raw: dict | None, track_title: str = "", track_artist: str = "") -> dict:
     """Оставляет только поля, которые нужны стилю, обрезает по длине и приводит регистр."""
     out = {}
     raw = raw if isinstance(raw, dict) else {}
@@ -136,7 +136,7 @@ def clean_fields(style_id: str, raw: dict | None, track_title: str = "") -> dict
         spec = FIELDS[key]
         v = str(raw.get(key) or "").strip()[: spec["max"]]
         if not v and spec.get("from_track"):
-            v = track_title.strip()[: spec["max"]]
+            v = (track_artist if spec["from_track"] == "artist" else track_title).strip()[: spec["max"]]
         if not v:
             v = spec.get("default", "")
         out[key] = v.upper() if spec.get("upper") else v
