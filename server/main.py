@@ -14,6 +14,7 @@ from urllib.parse import urlsplit
 import random
 import re
 import sqlite3
+import asyncio
 import subprocess
 import threading
 import time
@@ -324,6 +325,20 @@ async def save_cover(tid: str, cover: UploadFile) -> str:
     return str(path)
 
 
+def embedded_cover(audio: Path, tid: str) -> str | None:
+    """Обложка, вшитая в mp3/m4a/flac (ID3 APIC) — та самая, что Telegram показывает у вышедших треков."""
+    out = DATA / "covers" / f"{tid}.jpg"
+    try:
+        r = subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(audio), "-an", "-map", "0:v:0", "-frames:v", "1", "-vf", "scale='min(1600,iw)':-2", "-q:v", "3", str(out)],
+                           capture_output=True, timeout=30)
+        if r.returncode == 0 and out.exists() and out.stat().st_size > 2000:
+            return str(out)
+    except Exception:
+        pass
+    out.unlink(missing_ok=True)
+    return None
+
+
 @app.post("/api/tracks")
 async def upload_track(audio: UploadFile = File(...), title: str = Form(""), lyrics: str = Form(""),
                        instrumental: bool = Form(False),
@@ -362,6 +377,10 @@ async def upload_track(audio: UploadFile = File(...), title: str = Form(""), lyr
         q("UPDATE tracks SET instrumental=1, lyrics='' WHERE id=?", (tid,))
     if cover is not None and cover.filename:
         q("UPDATE tracks SET cover=? WHERE id=?", (await save_cover(tid, cover), tid))
+    else:                                    # обложку не выбрали — берём ту, что вшита в файл трека (если трек уже на площадках, она там есть)
+        emb = await asyncio.to_thread(embedded_cover, path, tid)
+        if emb:
+            q("UPDATE tracks SET cover=? WHERE id=?", (emb, tid))
     wake.set()
     return track_json(q("SELECT * FROM tracks WHERE id=?", (tid,), one=True))
 
