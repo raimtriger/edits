@@ -741,8 +741,15 @@ def process_track(t: sqlite3.Row):
     lines = align.align_lines(lyr, words, dur) if lyr else align.lines_from_segments(segs)
     if not lines:
         raise RuntimeError("не удалось распознать текст — добавь текст вручную")
+    chl = align.find_chorus_lyrics(lines) if lyr else None
     ch = align.find_chorus_words(words, dur)
-    if ch:   # припев по словам — точнее, работает и без текста артиста
+    if chl:    # есть текст артиста: припев = повторяющийся блок строк текста, время берём из выровненных строк
+        a, b, occ = chl
+        n = b - a + 1
+        for i, l in enumerate(lines):
+            l["chorus"] = any(o <= i < o + n for o in occ)
+        fs, fe = align.pick_fragment_from(lines, lines[a]["start"])
+    elif ch:   # припев по словам — точнее, работает и без текста артиста
         align.mark_chorus_by_time(lines, *ch)
         fs, fe = align.pick_fragment_from(lines, ch[0])
     else:

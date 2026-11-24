@@ -63,6 +63,48 @@ def norm(s: str) -> str:
     return re.sub(r"[^\w]+", "", s)
 
 
+def _dp_match(a: list[str], b: list[str]) -> list[tuple[int, int]]:
+    """Монотонное выравнивание (Needleman–Wunsch): пары (i, j), где слово текста a[i] совпало с распознанным b[j].
+    В отличие от difflib, не «хватает» первый попавшийся повтор припева: порядок слов сохраняется глобально,
+    поэтому все 4-6 одинаковых припевов встают каждый на своё место."""
+    n, m = len(a), len(b)
+    if not n or not m:
+        return []
+    import numpy as np
+    GA, GB = -0.6, -0.25          # пропуск слова текста / лишнего распознанного слова
+    S = np.zeros((n + 1, m + 1), np.float32)
+    S[:, 0] = np.arange(n + 1) * GA * 0.0      # начало и конец трека могут быть без голоса — пропуски по краям бесплатны
+    T = np.zeros((n + 1, m + 1), np.int8)       # 0 диагональ, 1 вверх (пропуск a), 2 влево (пропуск b)
+    for i in range(1, n + 1):
+        ai = a[i - 1]
+        row, prev = S[i], S[i - 1]
+        for j in range(1, m + 1):
+            sc = 2.0 if ai == b[j - 1] else -1.0
+            d, u, l = prev[j - 1] + sc, prev[j] + GA, row[j - 1] + GB
+            if d >= u and d >= l:
+                row[j], T[i, j] = d, 0
+            elif u >= l:
+                row[j], T[i, j] = u, 1
+            else:
+                row[j], T[i, j] = l, 2
+    # конец: лучшая клетка в последней строке или последнем столбце (хвост без голоса бесплатный)
+    i, j = n, int(np.argmax(S[n]))
+    if S[:, m].max() > S[n, j]:
+        i, j = int(np.argmax(S[:, m])), m
+    pairs = []
+    while i > 0 and j > 0:
+        t = T[i, j]
+        if t == 0:
+            if a[i - 1] == b[j - 1]:
+                pairs.append((i - 1, j - 1))
+            i, j = i - 1, j - 1
+        elif t == 1:
+            i -= 1
+        else:
+            j -= 1
+    return pairs[::-1]
+
+
 def align_lines(lines: list[str], words: list[Word], total: float) -> list[dict]:
     """Привязываем строки артиста к словам распознавания через выравнивание последовательностей."""
     toks, owner = [], []
@@ -91,11 +133,9 @@ def align_lines(lines: list[str], words: list[Word], total: float) -> list[dict]
                 m = difflib.get_close_matches(w, vocab, n=1, cutoff=0.7)
                 cache[w] = m[0] if m else w
             wn[k] = cache[w]
-    sm = difflib.SequenceMatcher(a=toks, b=wn, autojunk=False)
     hit: dict[int, list[Word]] = {}
-    for blk in sm.get_matching_blocks():
-        for k in range(blk.size):
-            hit.setdefault(owner[blk.a + k], []).append(words[blk.b + k])
+    for a_i, b_j in _dp_match(toks, wn):
+        hit.setdefault(owner[a_i], []).append(words[b_j])
 
     out = []
     for i, ln in enumerate(lines):
@@ -203,6 +243,33 @@ def find_chorus(lines: list[dict]) -> tuple[int, int]:
         return (0, -1)
     a = len(lines) // 3
     return (a, min(len(lines) - 1, a + 5))
+
+
+def find_chorus_lyrics(lines: list[dict], min_words: int = 6) -> tuple[int, int, list[int]] | None:
+    """Припев по ТЕКСТУ артиста: самый «весомый» блок из 2–8 подряд идущих строк, который повторяется (длина × повторы).
+    Возвращает (первая строка, последняя строка первого появления, индексы начал всех повторов)."""
+    keys = [norm(l["text"]) for l in lines]
+    best = None
+    for n in range(min(8, len(keys) // 2), 1, -1):
+        seen: dict[tuple, list[int]] = {}
+        for i in range(len(keys) - n + 1):
+            g = tuple(keys[i:i + n])
+            if all(g):
+                seen.setdefault(g, []).append(i)
+        for g, pos in seen.items():
+            occ = [pos[0]]
+            for p_ in pos[1:]:
+                if p_ - occ[-1] >= n:
+                    occ.append(p_)
+            if len(occ) < 2 or sum(len(x) for x in g) < min_words * 3:
+                continue
+            score = n * min(len(occ), 4)
+            if best is None or score > best[0] or (score == best[0] and occ[0] < best[1][0]):
+                best = (score, occ, n)
+    if not best:
+        return None
+    _, occ, n = best
+    return occ[0], occ[0] + n - 1, occ
 
 
 def find_chorus_words(words: list[Word], total: float, min_n: int = 5) -> tuple[float, float] | None:
