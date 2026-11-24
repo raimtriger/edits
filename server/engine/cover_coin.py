@@ -36,6 +36,19 @@ NOTCH_X, NOTCH_Y = 617, 860          # ниже NOTCH_Y правее NOTCH_X —
 TEXT_W = 2 * min(W / 2 - SAFE_L, NOTCH_X - W / 2)     # ширина строк, которые могут попасть в зону выреза (центрированный текст)
 
 
+def _subpix(a, x, yy):
+    """Сдвиг маски буквы на дробную часть координат (билинейно), чтобы текст плыл плавно, а не прыгал по целым пикселям."""
+    fx, fy = x - math.floor(x), yy - math.floor(yy)
+    x, yy = int(math.floor(x)), int(math.floor(yy))
+    if fx < 0.02 and fy < 0.02:
+        return a, x, yy
+    sq = a.ndim == 3
+    m = a[..., 0] if sq else a
+    m = cv2.copyMakeBorder(m, 1, 1, 1, 1, cv2.BORDER_CONSTANT, value=0)
+    m = cv2.warpAffine(m, np.float32([[1, 0, fx], [0, 1, fy]]), (m.shape[1], m.shape[0]), flags=cv2.INTER_LINEAR, borderValue=0)
+    return (m[..., None] if sq else m), x - 1, yy - 1
+
+
 def _accent(cov: np.ndarray) -> np.ndarray:
     """Цвет свечения из обложки: среднее самых насыщенных светлых пикселей (RGB 0..1). Нет цвета — тёплый розовый."""
     small = cv2.resize(cov, (64, 64), interpolation=cv2.INTER_AREA)
@@ -251,8 +264,8 @@ def render(*, cover, audio, out, start, dur, font_path, fmt, fields, lines, icon
 
     # ---------- текст ----------
     def blit(tcol, tal, a, x, yy, color, alpha):
+        a, x, yy = _subpix(a, x, yy)
         h, w = a.shape[:2]
-        x, yy = int(round(x)), int(round(yy))
         xa, ya, xb, yb = max(x, 0), max(yy, 0), min(x + w, W), min(yy + h, H)
         if xb <= xa or yb <= ya:
             return

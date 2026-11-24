@@ -13,6 +13,7 @@ import os
 from urllib.parse import urlsplit
 import random
 import re
+import shutil
 import sqlite3
 import asyncio
 import subprocess
@@ -23,7 +24,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel
 
 from .engine import align, render
@@ -389,24 +390,68 @@ def embedded_cover(audio: Path, tid: str) -> str | None:
     return None
 
 
+def _upload_part(u, uid: str) -> Path:
+    if not re.fullmatch(r"[0-9a-f]{16,32}", uid or ""):
+        raise HTTPException(400, "bad upload id")
+    d = DATA / "uploads"
+    d.mkdir(parents=True, exist_ok=True)
+    return d / f"{u['id']}_{uid}.part"
+
+
+@app.get("/api/uploads/{uid}")
+def upload_state(uid: str, u=Depends(current_user)):
+    part = _upload_part(u, uid)
+    return {"size": part.stat().st_size if part.exists() else 0}
+
+
+@app.post("/api/uploads/{uid}")
+async def upload_chunk(uid: str, request: Request, offset: int = 0, u=Depends(current_user)):
+    """Загрузка файла кусками: если связь оборвалась (свернули аппку), клиент спрашивает размер и дописывает с того же места."""
+    part = _upload_part(u, uid)
+    cur = part.stat().st_size if part.exists() else 0
+    if offset != cur:
+        return JSONResponse({"size": cur}, status_code=200 if offset < cur else 409)
+    body = await request.body()
+    if cur + len(body) > MAX_UPLOAD:
+        part.unlink(missing_ok=True)
+        raise HTTPException(413, "файл больше 80 МБ")
+    with open(part, "ab") as f:
+        f.write(body)
+    return {"size": cur + len(body)}
+
+
 @app.post("/api/tracks")
-async def upload_track(audio: UploadFile = File(...), title: str = Form(""), lyrics: str = Form(""),
+async def upload_track(audio: UploadFile | None = File(None), upload_id: str = Form(""), filename: str = Form(""),
+                       title: str = Form(""), lyrics: str = Form(""),
                        instrumental: bool = Form(False), artist: str = Form(""),
                        cover: UploadFile | None = File(None), u=Depends(current_user)):
+    if upload_id:
+        again = q("SELECT * FROM tracks WHERE id=? AND user_id=?", (upload_id[:12], u["id"]), one=True)
+        if again:                            # повторная отправка той же загрузки (ответ потерялся) — отдаём уже созданный трек
+            return track_json(again)
     if not u["is_owner"] and len(q("SELECT id FROM tracks WHERE user_id=?", (u["id"],))) >= MAX_TRACKS:
         raise HTTPException(409, f"Можно держать до {MAX_TRACKS} треков. Удали ненужный и загрузи новый.")
-    tid = uuid.uuid4().hex[:12]
-    ext = (Path(audio.filename or "a.mp3").suffix or ".mp3").lower()[:6]
+    src_name = filename or (audio.filename if audio else "") or "a.mp3"
+    tid = upload_id[:12] if upload_id else uuid.uuid4().hex[:12]
+    ext = (Path(src_name).suffix or ".mp3").lower()[:6]
     path = DATA / "tracks" / f"{tid}{ext}"
-    size = 0
-    with open(path, "wb") as f:
-        while chunk := await audio.read(1 << 20):
-            size += len(chunk)
-            if size > MAX_UPLOAD:
-                f.close()
-                path.unlink(missing_ok=True)
-                raise HTTPException(413, "файл больше 80 МБ")
-            f.write(chunk)
+    if upload_id:
+        part = _upload_part(u, upload_id)
+        if not part.exists():
+            raise HTTPException(400, "файл не дошёл — загрузи ещё раз")
+        shutil.move(str(part), str(path))
+    elif audio is not None:
+        size = 0
+        with open(path, "wb") as f:
+            while chunk := await audio.read(1 << 20):
+                size += len(chunk)
+                if size > MAX_UPLOAD:
+                    f.close()
+                    path.unlink(missing_ok=True)
+                    raise HTTPException(413, "файл больше 80 МБ")
+                f.write(chunk)
+    else:
+        raise HTTPException(400, "нет файла")
     try:
         dur = render.probe_duration(path)
     except Exception:
@@ -422,7 +467,7 @@ async def upload_track(audio: UploadFile = File(...), title: str = Form(""), lyr
         if len(lyrics.split()) < 8:
             path.unlink(missing_ok=True)
             raise HTTPException(400, "вставь текст песни целиком — он обязателен")
-    title = clean_title(title.strip() or Path(audio.filename or "Трек").stem)
+    title = clean_title(title.strip() or Path(src_name or "Трек").stem)
     artist = artist.strip()
     if not artist:
         artist, title = await asyncio.to_thread(guess_artist, path, title)

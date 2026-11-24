@@ -1739,19 +1739,48 @@ $('#render').onclick = () => renderEdit().catch(err => {
       if (dur && dur < 60) return toast('Загрузи трек целиком, не отрезок: фрагмент для эдита выберешь потом');
       if ($('#upLyrics').value.trim().split(/\s+/).filter(Boolean).length < 8) return toast('Вставь текст песни целиком — он обязателен');
     }
-    const fd = new FormData(); fd.append('audio', f); fd.append('title', $('#upTitle').value); fd.append('artist', $('#upArtist').value); fd.append('lyrics', noText ? '' : $('#upLyrics').value); fd.append('instrumental', noText ? 'true' : 'false');
-    const cv = $('#upCover').files[0]; if (cv) fd.append('cover', cv); else if (fileCover) fd.append('cover', new File([fileCover], 'cover.jpg', { type: fileCover.type }));
-    const xhr = new XMLHttpRequest(); xhr.open('POST', A('api/tracks')); for (const k in H) xhr.setRequestHeader(k, H[k]);
+    const uid = (() => { try { const k = 'le_up_' + f.name + f.size; let v = localStorage.getItem(k); if (!v) { v = [...crypto.getRandomValues(new Uint8Array(12))].map(x => x.toString(16).padStart(2, '0')).join(''); localStorage.setItem(k, v); } return v; } catch (e) { return [...Array(24)].map(() => Math.floor(Math.random() * 16).toString(16)).join(''); } })();
+    const upKey = 'le_up_' + f.name + f.size;
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
     $('#upProg').style.display = 'block'; $('#upSend').disabled = true; $('#upSend').textContent = 'Загружаем…';
-    xhr.upload.onprogress = e => { if (e.lengthComputable) $('#upBar').style.width = (e.loaded / e.total * 100) + '%'; };
     const done = () => { $('#upSend').disabled = false; $('#upSend').textContent = 'Загрузить'; $('#upProg').style.display = 'none'; $('#upBar').style.width = 0; };
-    xhr.onload = () => { done();
-      if (xhr.status === 200) { toast('Загружено! Распознаём текст…'); $('#upFile').value = ''; $('#upFileL').textContent = 'Выбрать mp3 или wav';
-        $('#upTitle').value = ''; $('#upArtist').value = ''; $('#upLyrics').value = ''; $('#upCover').value = '';
-        $('#upCoverPrev').style.backgroundImage = ''; $('#upCoverL').textContent = 'Выбрать картинку'; fileCover = null; go('tracks'); }
-      else { let m = 'Ошибка ' + xhr.status; try { m = JSON.parse(xhr.responseText).detail || m; } catch (e) {} toast(m); } };
-    xhr.onerror = () => { done(); toast('Сеть отвалилась, попробуй ещё'); };
-    xhr.send(fd);
+    const CH = 1024 * 1024;
+    // файл уходит кусками по 1 МБ; если связь оборвалась (свернули аппку, пропал интернет) — ждём и дописываем с того же места
+    const getJson = async r => { try { return await r.json(); } catch (e) { return {}; } };
+    try {
+      let off = 0;
+      for (let t = 0; t < 6; t++) { try { const r = await fetch(A('api/uploads/' + uid), { headers: H }); off = (await getJson(r)).size || 0; break; } catch (e) { await sleep(1000); } }
+      let fails = 0;
+      while (off < f.size) {
+        try {
+          const r = await fetch(A('api/uploads/' + uid + '?offset=' + off), { method: 'POST', headers: { ...H, 'Content-Type': 'application/octet-stream' }, body: f.slice(off, Math.min(off + CH, f.size)) });
+          const j = await getJson(r);
+          if (r.status !== 200 && r.status !== 409) throw new Error(j.detail || ('Ошибка ' + r.status));
+          off = j.size ?? off; fails = 0;
+          $('#upBar').style.width = (off / f.size * 100) + '%';
+          $('#upSend').textContent = 'Загружаем… ' + Math.floor(off / f.size * 100) + '%';
+        } catch (e) {
+          if (/Ошибка 4\d\d|больше 80/.test(e.message)) throw e;
+          if (++fails > 60) throw new Error('Сеть отвалилась, попробуй ещё');
+          $('#upSend').textContent = 'Нет связи, ждём…';
+          await sleep(Math.min(5000, 800 * fails));
+          try { await new Promise(r => { if (!document.hidden) return r(); document.addEventListener('visibilitychange', () => r(), { once: true }); setTimeout(r, 15000); }); } catch (e2) {}
+        }
+      }
+      const fd = new FormData(); fd.append('upload_id', uid); fd.append('filename', f.name); fd.append('title', $('#upTitle').value); fd.append('artist', $('#upArtist').value); fd.append('lyrics', noText ? '' : $('#upLyrics').value); fd.append('instrumental', noText ? 'true' : 'false');
+      const cv = $('#upCover').files[0]; if (cv) fd.append('cover', cv); else if (fileCover) fd.append('cover', new File([fileCover], 'cover.jpg', { type: fileCover.type }));
+      $('#upSend').textContent = 'Обрабатываем…';
+      let resp = null;
+      for (let t = 0; t < 8 && !resp; t++) {
+        try { resp = await fetch(A('api/tracks'), { method: 'POST', headers: H, body: fd }); } catch (e) { await sleep(1500 * (t + 1)); }
+      }
+      if (!resp) throw new Error('Сеть отвалилась, попробуй ещё');
+      if (resp.status !== 200) { const j = await getJson(resp); throw new Error(j.detail || ('Ошибка ' + resp.status)); }
+      try { localStorage.removeItem(upKey); } catch (e) {}
+      done(); toast('Загружено! Распознаём текст…'); $('#upFile').value = ''; $('#upFileL').textContent = 'Выбрать mp3 или wav';
+      $('#upTitle').value = ''; $('#upArtist').value = ''; $('#upLyrics').value = ''; $('#upCover').value = '';
+      $('#upCoverPrev').style.backgroundImage = ''; $('#upCoverL').textContent = 'Выбрать картинку'; fileCover = null; go('tracks');
+    } catch (e) { done(); toast(e.message || 'Не загрузилось, попробуй ещё'); }
   };
 
   /* навигация */
