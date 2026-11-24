@@ -95,6 +95,8 @@ with lock:
         db.execute("ALTER TABLE users ADD COLUMN daily INTEGER DEFAULT 0")      # ежедневный эдит включён
     if "daily_last" not in ucols:
         db.execute("ALTER TABLE users ADD COLUMN daily_last TEXT")              # дата последнего ежедневного эдита (МСК)
+    if "auto" not in ucols:
+        db.execute("ALTER TABLE users ADD COLUMN auto TEXT")                    # настройки авто-режима (JSON)
     db.commit()
 
 
@@ -179,7 +181,40 @@ def edit_json(e: sqlite3.Row) -> dict:
 
 @app.get("/api/me")
 def me(u=Depends(current_user)):
-    return {"name": u["name"], "owner": bool(u["is_owner"]), "free_left": u["free_left"], "daily": bool(u["daily"])}
+    return {"name": u["name"], "owner": bool(u["is_owner"]), "free_left": u["free_left"], "daily": bool(u["daily"]), "auto": auto_cfg(u)}
+
+
+AUTO_DEFAULT = {"on": False, "time": "10:00", "days": [0, 1, 2, 3, 4, 5, 6], "tracks": [], "style": "last"}
+
+
+def auto_cfg(u) -> dict:
+    try:
+        c = {**AUTO_DEFAULT, **json.loads(u["auto"] or "{}")}
+    except Exception:
+        c = dict(AUTO_DEFAULT)
+    if not (u["auto"]) and u["daily"]:        # старый «Ежедневный эдит» → авто-режим по умолчанию
+        c["on"] = True
+    return c
+
+
+class AutoIn(BaseModel):
+    on: bool = False
+    time: str = "10:00"            # ЧЧ:ММ по Москве
+    days: list[int] = [0, 1, 2, 3, 4, 5, 6]   # 0 = понедельник
+    tracks: list[str] = []         # пусто = по кругу все готовые треки
+    style: str = "last"            # "last" — как в последнем эдите, "random" — каждый раз по-разному
+
+
+@app.post("/api/auto")
+def set_auto(body: AutoIn, u=Depends(current_user)):
+    if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", body.time):
+        raise HTTPException(400, "время в формате ЧЧ:ММ")
+    days = sorted({d for d in body.days if 0 <= d <= 6}) or list(range(7))
+    mine = {r["id"] for r in q("SELECT id FROM tracks WHERE user_id=?", (u["id"],))}
+    cfg = {"on": body.on, "time": body.time, "days": days, "tracks": [t for t in body.tracks if t in mine][:3],
+           "style": body.style if body.style in ("last", "random") else "last"}
+    q("UPDATE users SET auto=?, daily=? WHERE id=?", (json.dumps(cfg), 1 if body.on else 0, u["id"]))
+    return cfg
 
 
 class DailyIn(BaseModel):
@@ -923,24 +958,31 @@ def daily_tick():
     """Раз в сутки (после 10:00 МСК) ставим в очередь новый эдит тем, кто включил «Ежедневный эдит»."""
     from zoneinfo import ZoneInfo
     now = datetime.datetime.now(ZoneInfo("Europe/Moscow"))
-    if now.hour < 10:
-        return
     today = now.strftime("%Y-%m-%d")
     for u in q("SELECT * FROM users WHERE daily=1 AND (daily_last IS NULL OR daily_last!=?)", (today,)):
+        cfg = auto_cfg(u)
+        if now.weekday() not in cfg["days"] or now.strftime("%H:%M") < cfg["time"]:
+            continue                                                    # не тот день или ещё рано
         if q("SELECT 1 FROM edits WHERE user_id=? AND status IN ('queued','rendering')", (u["id"],), one=True):
             continue                                                    # дождёмся, пока закончится текущий
         if not u["is_owner"] and u["free_left"] <= 0:
             q("UPDATE users SET daily_last=? WHERE id=?", (today, u["id"]))
             continue
         # трек, на который эдитов меньше всего (чтобы по кругу шли разные), среди готовых
-        t = q("""SELECT t.* FROM tracks t WHERE t.user_id=? AND t.status='ready'
-                 ORDER BY (SELECT COUNT(*) FROM edits e WHERE e.track_id=t.id), t.created DESC LIMIT 1""", (u["id"],), one=True)
+        sel = cfg["tracks"]
+        marks = ",".join("?" * len(sel))
+        t = q(f"""SELECT t.* FROM tracks t WHERE t.user_id=? AND t.status='ready' {"AND t.id IN (" + marks + ")" if sel else ""}
+                 ORDER BY (SELECT COUNT(*) FROM edits e WHERE e.track_id=t.id), t.created DESC LIMIT 1""", (u["id"], *sel), one=True)
         if not t:
             continue
-        last = q("SELECT params FROM edits WHERE user_id=? AND status='done' ORDER BY created DESC LIMIT 1", (u["id"],), one=True)
-        font = (json.loads(last["params"]).get("font") if last else None) or "inter"
-        params = {"mode": random.choice(["line", "word"]), "bw": random.random() < 0.2, "footage": "mix", "font": font,
-                  "watermark": not u["is_owner"], "kind": "edit", "caption": "", "daily": True}
+        last = q("SELECT params FROM edits WHERE user_id=? AND status='done' AND params LIKE '%\"kind\": \"edit\"%' ORDER BY created DESC LIMIT 1", (u["id"],), one=True)
+        lp = json.loads(last["params"]) if last else {}
+        if cfg["style"] == "last" and lp:      # стиль берём из последнего эдита артиста, чтобы лента выглядела цельно
+            params = {k: lp[k] for k in ("mode", "bw", "footage", "font", "color", "case", "pos") if k in lp}
+            params.update({"watermark": not u["is_owner"], "kind": "edit", "caption": "", "daily": True})
+        else:
+            params = {"mode": random.choice(["line", "word"]), "bw": random.random() < 0.2, "footage": "mix",
+                      "font": lp.get("font") or "inter", "watermark": not u["is_owner"], "kind": "edit", "caption": "", "daily": True}
         if not u["is_owner"]:
             q("UPDATE users SET free_left=free_left-1 WHERE id=?", (u["id"],))
         q("INSERT INTO edits(id,user_id,track_id,params,status,created) VALUES(?,?,?,?,?,?)",

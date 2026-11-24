@@ -448,9 +448,21 @@ input[type=range]{accent-color:var(--acc)}
   <button class="card row" data-go="plans" style="justify-content:space-between;text-align:left;width:100%">
     <span style="display:flex;flex-direction:column;gap:4px"><span class="lbl" style="color:var(--acc)" id="pPlan">Доступ «Основатель»</span><span class="mute" style="font-size:14px" id="pPlanSub">Всё открыто · бесплатно</span></span>
     <span style="font-weight:600;font-size:13px">Сменить</span></button>
-  <button class="card row" id="dailyBtn" style="justify-content:space-between;text-align:left;width:100%;gap:12px">
-    <span style="display:flex;flex-direction:column;gap:4px"><span style="font-size:15px;font-weight:700">Ежедневный эдит</span><span class="mute" style="font-size:13px">Каждый день в 10:00 по Москве новый эдит на один из твоих треков придёт в бот</span></span>
-    <span id="dailySw" style="flex-shrink:0;width:48px;height:28px;border-radius:14px;background:var(--card2);position:relative;transition:background .2s"><i style="position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:transform .2s"></i></span></button>
+  <div class="card" id="autoCard" style="display:flex;flex-direction:column;gap:12px">
+    <button class="row" id="dailyBtn" style="justify-content:space-between;text-align:left;width:100%;gap:12px">
+      <span style="display:flex;flex-direction:column;gap:4px"><span style="font-size:15px;font-weight:700">Авто-режим</span><span class="mute" style="font-size:13px">Бот сам пришлёт новый эдит на твой трек в нужное время</span></span>
+      <span id="dailySw" style="flex-shrink:0;width:48px;height:28px;border-radius:14px;background:var(--card2);position:relative;transition:background .2s"><i style="position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:transform .2s"></i></span></button>
+    <div id="autoSet" style="display:none;flex-direction:column;gap:12px">
+      <div><div class="mute" style="font-size:13px;margin-bottom:6px">Время (по Москве)</div>
+        <input id="autoTime" type="time" step="300" style="height:44px;width:100%;border-radius:12px;background:var(--bg);border:1px solid #2A2A2E;color:#F2F2F0;font-size:16px;padding:0 12px"></div>
+      <div><div class="mute" style="font-size:13px;margin-bottom:6px">Дни</div>
+        <div id="autoDays" style="display:flex;gap:6px"><button class="chip" data-d="0" style="flex:1;padding:0">Пн</button><button class="chip" data-d="1" style="flex:1;padding:0">Вт</button><button class="chip" data-d="2" style="flex:1;padding:0">Ср</button><button class="chip" data-d="3" style="flex:1;padding:0">Чт</button><button class="chip" data-d="4" style="flex:1;padding:0">Пт</button><button class="chip" data-d="5" style="flex:1;padding:0">Сб</button><button class="chip" data-d="6" style="flex:1;padding:0">Вс</button></div></div>
+      <div><div class="mute" style="font-size:13px;margin-bottom:6px">Треки</div>
+        <div id="autoTracks" style="display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding-bottom:4px"></div></div>
+      <div><div class="mute" style="font-size:13px;margin-bottom:6px">Стиль</div>
+        <div id="autoStyle" style="display:flex;gap:8px"><button class="chip" data-s="last" style="flex:1;justify-content:center">Как в последнем</button><button class="chip" data-s="random" style="flex:1;justify-content:center">Каждый раз разный</button></div></div>
+    </div>
+  </div>
   <div class="card demo-only" style="display:flex;flex-direction:column;gap:10px">
     <span style="font-size:15px;font-weight:700">Ссылка для фанатов</span>
     <span class="mute">Фанаты бесплатно монтируют эдиты на твой трек. В каждом — твоя пресейв-ссылка.</span>
@@ -1098,13 +1110,33 @@ $('#render').onclick = () => renderEdit().catch(err => {
   }
   function paintDaily() {
     const sw = $('#dailySw'); if (!sw || !me) return;
-    sw.style.background = me.daily ? 'var(--acc)' : 'var(--card2)';
-    sw.firstElementChild.style.transform = me.daily ? 'translateX(20px)' : 'none';
+    const A_ = me.auto || {};
+    sw.style.background = A_.on ? 'var(--acc)' : 'var(--card2)';
+    sw.firstElementChild.style.transform = A_.on ? 'translateX(20px)' : 'none';
+    $('#autoSet').style.display = A_.on ? 'flex' : 'none';
+    $('#autoTime').value = A_.time || '10:00';
+    $$('#autoDays .chip').forEach(c => c.classList.toggle('on', (A_.days || []).includes(+c.dataset.d)));
+    $$('#autoStyle .chip').forEach(c => c.classList.toggle('on', c.dataset.s === (A_.style || 'last')));
+    const box = $('#autoTracks');
+    box.innerHTML = '<button class="chip' + (!(A_.tracks || []).length ? ' on' : '') + '" data-t="" style="flex:none">Все по кругу</button>' +
+      (typeof tracks !== 'undefined' ? tracks : []).filter(t => t.status === 'ready').map(t => `<button class="chip${(A_.tracks || []).includes(t.id) ? ' on' : ''}" data-t="${t.id}" style="flex:none;max-width:70%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.title)}</button>`).join('');
+  }
+  async function saveAuto(patch) {
+    const next = { ...(me.auto || {}), ...patch };
+    try { me.auto = await api('api/auto', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(next) }); me.daily = me.auto.on; paintDaily(); haptic(); }
+    catch (e) { toast(e.message); }
   }
   $('#dailyBtn') && ($('#dailyBtn').onclick = async () => {
-    try { const r = await api('api/daily', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on: !me.daily }) });
-      me.daily = r.daily; paintDaily(); haptic(); toast(me.daily ? 'Включено: первый эдит придёт завтра в 10:00' : 'Выключено'); } catch (e) { toast(e.message); }
+    const on = !(me.auto || {}).on; await saveAuto({ on });
+    toast(on ? 'Авто-режим включён: эдиты придут в бот в выбранное время' : 'Авто-режим выключен');
   });
+  $('#autoTime').onchange = e => saveAuto({ time: e.target.value || '10:00' });
+  $('#autoDays').onclick = e => { const b = e.target.closest('[data-d]'); if (!b) return; const d = +b.dataset.d, cur = new Set((me.auto || {}).days || []);
+    cur.has(d) ? cur.delete(d) : cur.add(d); if (!cur.size) return toast('Выбери хотя бы один день'); saveAuto({ days: [...cur].sort() }); };
+  $('#autoStyle').onclick = e => { const b = e.target.closest('[data-s]'); if (b) saveAuto({ style: b.dataset.s }); };
+  $('#autoTracks').onclick = e => { const b = e.target.closest('[data-t]'); if (!b) return; const t = b.dataset.t;
+    if (!t) return saveAuto({ tracks: [] });
+    const cur = new Set((me.auto || {}).tracks || []); cur.has(t) ? cur.delete(t) : cur.add(t); saveAuto({ tracks: [...cur] }); };
   try { await loadMe(); } catch (e) { toast(e.message); return; }
   $('#hint').textContent = 'Отрывок — припев, его нашли сами. Монтаж занимает 2–4 минуты, готовое видео придёт в бот.';
   $('#mount').textContent = 'Смонтировать';
@@ -1162,7 +1194,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
     ready: ['Готов · проверь строки', 'var(--acc)'], error: ['Ошибка', '#ff6b6b'] };
   const stLabel = t => t.status === 'ready' && t.instrumental ? ['Готов · без слов', 'var(--acc)'] : (ST[t.status] || ['', '']);
   async function loadTracks() {
-    tracks = await api('api/tracks'); renderTracks(); renderStudioTracks(); renderHome();
+    tracks = await api('api/tracks'); renderTracks(); renderStudioTracks(); renderHome(); try { paintDaily(); } catch (e) {}
     clearTimeout(loadTracks.t);
     if (tracks.some(t => t.status === 'queued' || t.status === 'processing')) loadTracks.t = setTimeout(() => loadTracks().catch(() => {}), 4000);
   }
