@@ -33,6 +33,7 @@ class Style:
     color: str = "FFFFFF"       # цвет текста, hex RRGGBB
     cut: float = 1.0            # средняя длина склейки, сек
     darken: float = 0.10        # затемнение под текст (0..0.4)
+    letter_case: str = ""        # "upper" / "lower" / "" — как в тексте
     show_next: bool = False     # показывать следующую строку блекло (режим line)
     watermark: str | None = None  # надпись внизу (бесплатный тариф)
     fonts_dir: str | None = None  # папка со шрифтами для libass
@@ -122,6 +123,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     ev: list[str] = []
     cx, cy = W // 2, int(H * 0.52)
     visible = [ln for ln in lines if ln.end > offset and ln.start < offset + length]
+    if style.letter_case in ("upper", "lower"):
+        fn = str.upper if style.letter_case == "upper" else str.lower
+        visible = [Line(ln.start, ln.end, fn(ln.text)) for ln in visible]
 
     for i, ln in enumerate(visible):
         s = max(0.0, ln.start - offset)

@@ -306,6 +306,7 @@ input[type=range]{accent-color:var(--acc)}
     <button class="chip live-only" id="pickBtn" style="flex:none;width:100%;height:46px;min-height:46px;border:1.5px dashed #3A3A40;background:transparent;display:flex;align-items:center;justify-content:center">Выбрать кадры вручную</button></div>
   <div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Текст</span>
     <div class="grid3"><button class="tog on" data-m="line">Строкой</button><button class="tog" data-m="word">По слову</button><button class="tog" id="bw">Ч/Б</button></div>
+    <div class="grid3" id="caseSeg"><button class="tog on" data-case="">Как в тексте</button><button class="tog" data-case="upper">ВЕРХНИЙ</button><button class="tog" data-case="lower">нижний</button></div>
     <div class="live-only" style="flex-direction:column;gap:8px;margin-top:6px"><span class="lbl">Цвет текста</span>
       <div id="colRow" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center"></div>
       <div class="mute" id="colHint" style="font-size:12px;min-height:16px"></div></div></div>
@@ -1149,7 +1150,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
     const again = $('#hAgain');
     if (again) again.onclick = async () => {
       if (edits.some(e => e.status === 'queued' || e.status === 'rendering')) return toast('Один ролик уже монтируется — дождись его');
-      try { await api('api/edits', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ track_id: done.track_id, mode: done.params.mode, bw: done.params.bw, footage: done.params.footage }) });
+      try { await api('api/edits', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ track_id: done.track_id, mode: done.params.mode, bw: done.params.bw, case: done.params.case || '', footage: done.params.footage }) });
         toast('Монтируем новый вариант — придёт в бот'); loadEdits(); loadMe().catch(() => {}); } catch (e) { toast(e.message); }
     };
     $('#pSub').textContent = tracks.length + ' ' + plural(tracks.length, 'трек', 'трека', 'треков') + ' · ' + edits.filter(e => e.status === 'done').length + ' эдитов';
@@ -1382,7 +1383,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
     mountBtn.disabled = true; mountBtn.style.opacity = .6; mountBtn.textContent = 'Отправляем…'; mountMsg.textContent = '';
     try {
       await api('api/edits', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ track_id: selTrack, mode, bw: $('#bw').classList.contains('on'), color: selColor, footage: selFoot, clips: selClips, font: selFont,
+        body: JSON.stringify({ track_id: selTrack, mode, bw: $('#bw').classList.contains('on'), case: curCase(), color: selColor, footage: selFoot, clips: selClips, font: selFont,
           kind: selKind, caption: (cf.caption || 'ПРЕМЬЕРА').toUpperCase(), style: selStyle, format: selFmt, fields: cf }) });
       try { TG && TG.HapticFeedback && TG.HapticFeedback.notificationOccurred('success'); } catch (e) {}
       if (selKind !== 'cover') pushRecent();
@@ -1552,10 +1553,13 @@ $('#render').onclick = () => renderEdit().catch(err => {
   $('#colRow').addEventListener('input', e => { if (e.target.id === 'colCustom') setColor(e.target.value); });
   paintColor();
 
-  const curStyleObj = () => ({ font: selFont, color: selColor, foot: selFoot, bw: $('#bw').classList.contains('on'), mode: ($('[data-m].on') || {}).dataset?.m || 'line' });
+  const curCase = () => (($('#caseSeg .on') || {}).dataset || {}).case || '';
+  $('#caseSeg').onclick = e => { const b = e.target.closest('[data-case]'); if (b) $$('#caseSeg .tog').forEach(x => x.classList.toggle('on', x === b)); };
+  const curStyleObj = () => ({ case: curCase(), font: selFont, color: selColor, foot: selFoot, bw: $('#bw').classList.contains('on'), mode: ($('[data-m].on') || {}).dataset?.m || 'line' });
   function applyStyleObj(o) {
     if (fonts.find(f => f.key === o.font)) { selFont = o.font; try { localStorage.setItem('le_font', selFont); } catch (e) {} $$('#fontChips [data-fn]').forEach(c => c.classList.toggle('on', c.dataset.fn === selFont)); }
     setColor(o.color || 'FFFFFF');
+    $$('#caseSeg .tog').forEach(x => x.classList.toggle('on', x.dataset.case === (o.case || '')));
     $$('[data-m]').forEach(x => x.classList.toggle('on', x.dataset.m === o.mode));
     if ($('#bw').classList.contains('on') !== !!o.bw) $('#bw').click();
     if (o.foot) { selFoot = o.foot; loadFoot().catch(() => {}); }
