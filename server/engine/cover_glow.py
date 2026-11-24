@@ -118,14 +118,14 @@ def simulate(an: dict, N: int):
                 if th < INTRO:
                     continue
                 power = st * (0.35 + 0.9 * float(an["dyn"][min(i, N - 1)]))      # ~0.1 … 1.25
-                vs += 0.15 * ws * power
+                vs += 0.085 * ws * power
                 sign = -sign
-                va += sign * 3.4 * wa * power
-                vy += -12.0 * wy * power
+                va += sign * 2.2 * wa * power
+                vy += -6.5 * wy * power
             vs += (-ws * ws * xs - 2 * zs * ws * vs) * dt; xs += vs * dt
             va += (-wa * wa * xa - 2 * za * wa * va) * dt; xa += va * dt
             vy += (-wy * wy * xy - 2 * zy * wy * vy) * dt; xy += vy * dt
-        sc[i], ang[i], yo[i] = min(xs, 0.15), max(-6.0, min(6.0, xa)), max(-20.0, min(20.0, xy))
+        sc[i], ang[i], yo[i] = min(xs, 0.085), max(-3.5, min(3.5, xa)), max(-11.0, min(11.0, xy))
     return sc, ang, yo
 
 
@@ -309,8 +309,8 @@ def render(*, cover, audio, out, start, dur, font_path, fmt, fields, lines):
                 # после посадки: волна покачивания по строке + прыжок на ударах (волной слева направо)
                 live = ease_io((tin - 0.6) / 0.6)
                 ph_i = i * 0.11 + li * 0.23
-                cy += live * 5.5 * math.sin(TAU * (t * 0.42 + ph_i))
-                ang += live * 2.4 * math.sin(TAU * (t * 0.31 + ph_i * 1.3))
+                cy += live * 3.0 * math.sin(TAU * (t * 0.42 + ph_i))
+                ang += live * 1.2 * math.sin(TAU * (t * 0.31 + ph_i * 1.3))
                 bump = 0.0
                 if tin > 0.5:
                     lo = np.searchsorted(hit_t, t - BOUNCE - 0.025 * ln.n)
@@ -322,10 +322,10 @@ def render(*, cover, audio, out, start, dur, font_path, fmt, fields, lines):
                             continue
                         if tau < BOUNCE:
                             bump += hit_p[hi_] * math.sin(math.pi * tau / BOUNCE)
-                bump = min(bump, 1.6)
-                cy -= 13 * bump
-                scl *= 1 + 0.10 * bump
-                ang += 3.0 * bump * math.sin(TAU * (i * 0.37 + li * 0.2))
+                bump = min(bump, 1.2)
+                cy -= 6 * bump
+                scl *= 1 + 0.05 * bump
+                ang += 1.4 * bump * math.sin(TAU * (i * 0.37 + li * 0.2))
                 ph = ((t * 0.36 - li * 0.23) % 1.0) * 1.5 - 0.25
                 dip = math.exp(-(((i / ln.n) - ph) / 0.11) ** 2)
                 shade = min(1.0, (1.0 - 0.42 * dip) * (1 + 0.1 * lift + 0.12 * bump))
