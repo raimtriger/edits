@@ -42,8 +42,15 @@ def transcribe(audio_path: str, lyrics_hint: str | None = None) -> tuple[list[Wo
         initial_prompt=prompt, condition_on_previous_text=False, beam_size=1)
     words, segs = [], []
     for s in segments:
+        # в проигрышах Whisper с подсказкой-текстом любит «допевать» строки из подсказки: такие сегменты отбрасываем
+        if getattr(s, "no_speech_prob", 0) > 0.6 and getattr(s, "avg_logprob", 0) < -0.8:
+            continue
+        if getattr(s, "avg_logprob", 0) < -1.6:
+            continue
         segs.append((s.start, s.end, s.text.strip()))
         for w in (s.words or []):
+            if getattr(w, "probability", 1.0) < 0.2:
+                continue
             words.append(Word(w.word.strip(), w.start, w.end))
     return words, segs
 
@@ -172,13 +179,15 @@ def align_lines(lines: list[str], words: list[Word], total: float) -> list[dict]
         for o, c in zip(out, cnt):
             o["start"], o["end"] = t, t + (b - a) * c / tot
             t = o["end"]
-    _fill_gaps(out, total)
+    _fill_gaps(out, total, words)
     return out
 
 
-def _fill_gaps(out: list[dict], total: float) -> None:
+def _fill_gaps(out: list[dict], total: float, words: list[Word] | None = None) -> None:
     """Строки, которые не распознались, ставим между соседями."""
     n = len(out)
+    for o in out:
+        o["_m"] = o["start"] is not None            # строка реально поймана распознаванием
     i = 0
     while i < n:
         if out[i]["start"] is not None:
@@ -190,10 +199,31 @@ def _fill_gaps(out: list[dict], total: float) -> None:
         left = out[i - 1]["end"] if i > 0 else 0.5
         right = out[j]["start"] if j < n else min(total, left + 3.0 * (j - i))
         left = min(left, total - 0.4 * (j - i))
-        step = max(0.6, (right - left) / (j - i)) if right > left else 2.0
-        for k in range(i, j):
-            out[k]["start"] = round(left + (k - i) * step, 2)
-            out[k]["end"] = round(left + (k - i + 1) * step, 2)
+        cnt = j - i
+        # непойманные строки ставим только туда, где слышен голос (слова распознавания), а не растягиваем на весь проигрыш
+        vs = [w for w in (words or []) if w.start >= left - 0.2 and w.end <= right + 0.2]
+        spans = []
+        for w in vs:
+            if spans and w.start - spans[-1][1] < 1.5:
+                spans[-1][1] = max(spans[-1][1], w.end)
+            else:
+                spans.append([w.start, w.end])
+        voiced = sum(b - a for a, b in spans)
+        if voiced >= 0.8 * cnt:
+            def at(x):                                # позиция в «голосовом» времени -> реальное время
+                for a, b in spans:
+                    if x <= b - a:
+                        return a + x
+                    x -= b - a
+                return spans[-1][1]
+            for k in range(cnt):
+                out[i + k]["start"] = round(at(voiced * k / cnt), 2)
+                out[i + k]["end"] = round(at(voiced * (k + 1) / cnt), 2)
+        else:                                          # голоса нет — не больше 2.5 с на строку, от левого соседа
+            step = min(2.5, max(0.6, (right - left) / cnt)) if right > left else 2.0
+            for k in range(cnt):
+                out[i + k]["start"] = round(left + k * step, 2)
+                out[i + k]["end"] = round(left + (k + 1) * step, 2)
         i = j
     # все строки внутри трека и по порядку: не выходим за конец и не накладываемся
     for k in range(n - 1, -1, -1):
@@ -205,8 +235,12 @@ def _fill_gaps(out: list[dict], total: float) -> None:
     # строка держится до начала следующей (но не дольше 6 с)
     for k in range(n):
         nxt = out[k + 1]["start"] if k + 1 < n else total
-        out[k]["end"] = round(min(max(out[k]["end"] or 0, nxt - 0.05), out[k]["start"] + 6.0, nxt), 2)
+        nw = max(1, len(out[k]["text"].split()))
+        hold = out[k]["start"] + min(6.0, 1.2 + 0.5 * nw)      # строка не висит в проигрыше: держим не дольше пения + ~1 с
+        end = max(out[k]["end"] or 0, nxt - 0.05) if nxt - out[k]["end"] < 1.0 else out[k]["end"] + 0.9
+        out[k]["end"] = round(min(max(end, out[k]["start"] + 0.8), max(hold, out[k]["end"] + 0.9), nxt), 2)
         out[k]["start"] = round(out[k]["start"], 2)
+        out[k].pop("_m", None)
 
 
 def lines_from_segments(segs: list[tuple[float, float, str]], max_words: int = 6) -> list[dict]:
@@ -309,7 +343,10 @@ def mark_chorus_by_time(lines: list[dict], start: float, end: float) -> None:
 
 def pick_fragment_from(lines: list[dict], start: float, max_len: float = 28.0, min_len: float = 15.0) -> tuple[float, float]:
     """Фрагмент от времени start (начало припева) целыми строками."""
-    fs = max(0.0, start - 0.35)
+    fs = max(0.0, start - 2.5)                      # начинаем на 2–3 с раньше припева, чтобы эдит не обрывался на первом слове
+    for l in lines:                                 # но не захватываем хвост предыдущей строки
+        if fs < l["end"] <= start - 0.3:
+            fs = min(start - 0.35, l["end"] + 0.05)
     fe = start + min_len
     for l in lines:
         if l["end"] <= start:
@@ -327,7 +364,7 @@ def pick_fragment(lines: list[dict], max_len: float = 28.0) -> tuple[float, floa
     a, b = find_chorus(lines)
     if b < a:
         return (0.0, min(max_len, 20.0))
-    start = max(0.0, lines[a]["start"] - 0.3)
+    start = max(0.0, lines[a]["start"] - 2.5)
     end = lines[a]["end"]
     for k in range(a, len(lines)):
         if lines[k]["end"] - start > max_len:
