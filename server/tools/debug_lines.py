@@ -9,9 +9,14 @@ from server.engine import align
 db = sqlite3.connect(Path(os.environ.get("EDITS_DATA", "/opt/edits/data")) / "edits.db")
 db.row_factory = sqlite3.Row
 name = sys.argv[1] if len(sys.argv) > 1 else ""
-t = db.execute("SELECT * FROM tracks WHERE title LIKE ? ORDER BY created DESC LIMIT 1", (f"%{name}%",)).fetchone()
-if not t:
-    sys.exit("трек не найден")
+rows = db.execute("SELECT * FROM tracks ORDER BY created DESC").fetchall()
+hit = [r for r in rows if name.lower() in (r["title"] or "").lower()]   # SQLite LIKE не понимает регистр кириллицы, ищем сами
+if not hit:
+    print("трек не найден. Что есть в базе:")
+    for r in rows[:15]:
+        print("  ", r["title"], "·", r["artist"] or "-")
+    sys.exit(1)
+t = hit[0]
 print("ТРЕК:", t["title"], "· длительность", t["duration"], "· фрагмент", t["frag_start"], "-", t["frag_end"])
 print("\nТЕКСТ, который ты прислал:")
 print(t["lyrics"] or "(пусто)")
