@@ -536,7 +536,7 @@ function go(s) {
   if (s === 'process') runProcess();
 }
 document.addEventListener('click', e => {
-  const g = e.target.closest('[data-go]'); if (g) go(g.dataset.go);
+  const g = e.target.closest('[data-go]'); if (g) { if (g.dataset.go === 'make' && typeof tracks !== 'undefined' && tracks.length >= 3 && !(typeof me !== 'undefined' && me && me.owner)) return toast('Можно держать до 3 треков. Удали ненужный и загрузи новый.'); go(g.dataset.go); }
   const t = e.target.closest('[data-toast]'); if (t) toast(t.dataset.toast);
 });
 let tt;

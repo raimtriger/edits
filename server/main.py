@@ -47,6 +47,7 @@ FREE_EDITS = int(os.environ.get("FREE_EDITS", "3"))
 CORS_ORIGINS = [o.strip().rstrip("/") for o in os.environ.get("CORS_ORIGINS", "https://raimtriger.github.io").split(",") if o.strip()]
 DEV =os.environ.get("EDITS_DEV") == "1"            # локальные тесты без Telegram
 FAKE_ASR = os.environ.get("EDITS_FAKE_ASR") == "1"  # тесты без модели распознавания
+MAX_TRACKS = 3          # треков на пользователя (кроме основателя): сервер маленький
 MAX_UPLOAD = 80 * 1024 * 1024
 MAX_TRACK_SEC = 8 * 60
 
@@ -392,6 +393,8 @@ def embedded_cover(audio: Path, tid: str) -> str | None:
 async def upload_track(audio: UploadFile = File(...), title: str = Form(""), lyrics: str = Form(""),
                        instrumental: bool = Form(False), artist: str = Form(""),
                        cover: UploadFile | None = File(None), u=Depends(current_user)):
+    if not u["is_owner"] and len(q("SELECT id FROM tracks WHERE user_id=?", (u["id"],))) >= MAX_TRACKS:
+        raise HTTPException(409, f"Можно держать до {MAX_TRACKS} треков. Удали ненужный и загрузи новый.")
     tid = uuid.uuid4().hex[:12]
     ext = (Path(audio.filename or "a.mp3").suffix or ".mp3").lower()[:6]
     path = DATA / "tracks" / f"{tid}{ext}"
