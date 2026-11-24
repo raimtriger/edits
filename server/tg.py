@@ -103,6 +103,15 @@ class Bot:
             if poster and os.path.exists(poster):
                 os.unlink(poster)
 
+    def send_document(self, chat_id: int, path: str, caption: str = ""):
+        try:
+            with open(path, "rb") as f:
+                return httpx.post(f"{self.base}/sendDocument", data={"chat_id": str(chat_id), "caption": caption},
+                                  files={"document": (os.path.basename(path), f, "text/plain")}, timeout=60).json()
+        except Exception as e:
+            log.warning("sendDocument failed: %s", e)
+            return None
+
     def setup_menu_button(self):
         self.call("setChatMenuButton", menu_button={"type": "web_app", "text": "Эдиты", "web_app": {"url": self.webapp_url}})
 

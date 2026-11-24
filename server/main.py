@@ -809,6 +809,17 @@ def process_track(t: sqlite3.Row):
     q("UPDATE tracks SET lines=?, frag_start=?, frag_end=?, duration=?, status='ready' WHERE id=?",
       (json.dumps(lines, ensure_ascii=False), fs, fe, dur, t["id"]))
     chat = tg_of(t["user_id"])
+    try:                                     # отчёт «что услышало распознавание и куда встали строки» — владельцу в личку, для разбора промахов
+        if not FAKE_ASR and q("SELECT is_owner FROM users WHERE id=?", (t["user_id"],), one=True)["is_owner"] and bot and chat:
+            rep = DATA / "asr" / f"{t['id']}.txt"
+            rep.parent.mkdir(exist_ok=True)
+            rep.write_text(
+                f"{t['title']} · {dur:.0f} с · фрагмент {fs:.1f}-{fe:.1f}\n\nСТРОКИ:\n" +
+                "\n".join(f'{l["start"]:7.1f} {l["end"]:7.1f} {"*" if l.get("chorus") else " "} {l["text"]}' for l in lines) +
+                "\n\nЧТО СЛЫШИТ РАСПОЗНАВАНИЕ:\n" + " ".join(f"{w.text}[{w.start:.0f}]" for w in words), encoding="utf-8")
+            bot.send_document(chat, str(rep), "Отчёт по выравниванию (для разбора)")
+    except Exception as e:
+        log.warning("asr report failed: %s", e)
     if bot and chat:
         bot.send_message(chat, f"«{t['title']}»: текст расставлен, припев найден ({fs:.0f}–{fe:.0f} с). "
                                f"Проверь строки в аппке и жми «Смонтировать».", with_app_button=True)
