@@ -22,6 +22,7 @@ class Line:
     start: float  # секунды от начала трека
     end: float
     text: str
+    wt: list | None = None      # время каждого слова [[старт, конец], ...] из распознавания
 
 
 @dataclass
@@ -125,7 +126,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     visible = [ln for ln in lines if ln.end > offset and ln.start < offset + length]
     if style.letter_case in ("upper", "lower"):
         fn = str.upper if style.letter_case == "upper" else str.lower
-        visible = [Line(ln.start, ln.end, fn(ln.text)) for ln in visible]
+        visible = [Line(ln.start, ln.end, fn(ln.text), ln.wt) for ln in visible]
 
     for i, ln in enumerate(visible):
         s = max(0.0, ln.start - offset)
@@ -136,14 +137,24 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             words = ln.text.split()
             if not words:
                 continue
-            # длительность слова пропорциональна числу букв
-            total = sum(len(w) + 2 for w in words)
-            t = s
-            for w in words:
-                d = (e - s) * (len(w) + 2) / total
-                ev.append(f"Dialogue: 0,{_ass_time(t)},{_ass_time(t + d)},Word,,0,0,0,,"
-                          f"{{\\pos({cx},{cy})\\fad(60,40)}}{_ass_escape(w)}")
-                t += d
+            wt = ln.wt if (ln.wt and len(ln.wt) == len(words) and abs(ln.wt[0][0] - ln.start) < 0.6) else None
+            if wt:      # точные времена слов: слово появляется, когда его поют, и не висит в паузе
+                for k, w in enumerate(words):
+                    ws = max(0.0, wt[k][0] - offset)
+                    nxt = wt[k + 1][0] - offset if k + 1 < len(words) else wt[k][1] - offset + 0.25
+                    we = min(nxt, ws + max(0.4, wt[k][1] - wt[k][0] + 0.3), length)
+                    if we <= ws or ws >= length:
+                        continue
+                    ev.append(f"Dialogue: 0,{_ass_time(ws)},{_ass_time(we)},Word,,0,0,0,,"
+                              f"{{\\pos({cx},{cy})\\fad(60,40)}}{_ass_escape(w)}")
+            else:       # времён слов нет (строка угадана или отредактирована) — делим время строки по числу букв
+                total = sum(len(w) + 2 for w in words)
+                t = s
+                for w in words:
+                    d = (e - s) * (len(w) + 2) / total
+                    ev.append(f"Dialogue: 0,{_ass_time(t)},{_ass_time(t + d)},Word,,0,0,0,,"
+                              f"{{\\pos({cx},{cy})\\fad(60,40)}}{_ass_escape(w)}")
+                    t += d
         else:
             ev.append(f"Dialogue: 1,{_ass_time(s)},{_ass_time(e)},Main,,0,0,0,,"
                       f"{{\\pos({cx},{cy})\\fad(180,150)}}{_ass_escape(ln.text)}")

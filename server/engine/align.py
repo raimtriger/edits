@@ -112,15 +112,46 @@ def _dp_match(a: list[str], b: list[str]) -> list[tuple[int, int]]:
     return pairs[::-1]
 
 
+def _word_times(text: str, m: dict[int, Word]) -> list[list[float]] | None:
+    """Время каждого слова строки: у пойманных — из распознавания, у остальных — между соседними пойманными."""
+    n = len(text.split())
+    if n == 0 or not m:
+        return None
+    t = [[m[k].start, m[k].end] if k in m else None for k in range(n)]
+    known = [k for k in range(n) if t[k]]
+    for k in range(n):
+        if t[k]:
+            continue
+        lo = max((j for j in known if j < k), default=None)
+        hi = min((j for j in known if j > k), default=None)
+        if lo is not None and hi is not None:
+            a, b = t[lo][1], t[hi][0]
+            span = max(0.0, b - a)
+            gaps = hi - lo - 1
+            idx = k - lo - 1
+            w = span / (gaps + 1) if gaps >= 0 else 0.3
+            t[k] = [a + w * idx + 0.0, a + w * (idx + 1)]
+        elif lo is not None:
+            t[k] = [t[lo][1] + 0.35 * (k - lo - 1), t[lo][1] + 0.35 * (k - lo)]
+        else:
+            t[k] = [t[hi][0] - 0.35 * (hi - k), t[hi][0] - 0.35 * (hi - k - 1)]
+    for k in range(1, n):                           # время не идёт назад
+        if t[k][0] < t[k - 1][0]:
+            t[k][0] = t[k - 1][0]
+        t[k][1] = max(t[k][1], t[k][0] + 0.05)
+    return [[round(a, 2), round(b, 2)] for a, b in t]
+
+
 def align_lines(lines: list[str], words: list[Word], total: float) -> list[dict]:
     """Привязываем строки артиста к словам распознавания через выравнивание последовательностей."""
-    toks, owner = [], []
+    toks, owner, tpos = [], [], []
     for i, ln in enumerate(lines):
-        for t in ln.split():
+        for k, t in enumerate(ln.split()):
             n = norm(t)
             if n:
                 toks.append(n)
                 owner.append(i)
+                tpos.append(k)
     # мусор распознавания: не-кириллица/латиница («שוב») и слова, у которых время «прыгнуло» назад
     clean: list[Word] = []
     for w in words:
@@ -141,15 +172,18 @@ def align_lines(lines: list[str], words: list[Word], total: float) -> list[dict]
                 cache[w] = m[0] if m else w
             wn[k] = cache[w]
     hit: dict[int, list[Word]] = {}
+    wmatch: dict[int, dict[int, Word]] = {}          # строка -> {номер слова в строке: слово распознавания}
     for a_i, b_j in _dp_match(toks, wn):
         hit.setdefault(owner[a_i], []).append(words[b_j])
+        wmatch.setdefault(owner[a_i], {})[tpos[a_i]] = words[b_j]
 
     out = []
     for i, ln in enumerate(lines):
         ws = hit.get(i) or []
         n_w = max(1, len([t for t in ln.split() if norm(t)]))
         if ws and len(ws) / n_w >= 0.34:           # строку принимаем, если поймано не меньше трети слов (как в автопостинге)
-            out.append({"text": ln, "start": min(w.start for w in ws), "end": max(w.end for w in ws)})
+            out.append({"text": ln, "start": min(w.start for w in ws), "end": max(w.end for w in ws),
+                        "wt": _word_times(ln, wmatch.get(i, {}))})
         else:
             out.append({"text": ln, "start": None, "end": None})
     prev_end = -1.0
@@ -179,6 +213,9 @@ def align_lines(lines: list[str], words: list[Word], total: float) -> list[dict]
         for o, c in zip(out, cnt):
             o["start"], o["end"] = t, t + (b - a) * c / tot
             t = o["end"]
+    for o in out:                                   # слова-времена нужны только строкам, реально пойманным; у остальных времена угаданные
+        if o["start"] is None or o.get("wt") is None:
+            o.pop("wt", None)
     _fill_gaps(out, total, words)
     return out
 
