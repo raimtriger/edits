@@ -156,8 +156,31 @@ app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_methods=["G
                    allow_headers=["*"], max_age=86400)
 
 
+def guide_file(tid: str) -> Path | None:
+    g = sorted((DATA / "tracks").glob(f"{tid}_guide.*"))
+    return g[0] if g else None
+
+
+async def save_guide(tid: str, up: UploadFile) -> Path:
+    """Голос-гайд: запись голосом (разговором, слово в слово), сделанная поверх трека. Распознаём её, а не трек — слова слышны чисто."""
+    for old in (DATA / "tracks").glob(f"{tid}_guide.*"):
+        old.unlink(missing_ok=True)
+    ext = (Path(up.filename or "g.m4a").suffix or ".m4a").lower()[:6]
+    path = DATA / "tracks" / f"{tid}_guide{ext}"
+    size = 0
+    with open(path, "wb") as f:
+        while chunk := await up.read(1 << 20):
+            size += len(chunk)
+            if size > 40 * 1048576:
+                f.close()
+                path.unlink(missing_ok=True)
+                raise HTTPException(413, "голос-гайд больше 40 МБ")
+            f.write(chunk)
+    return path
+
+
 def track_json(t: sqlite3.Row) -> dict:
-    return {"id": t["id"], "title": t["title"], "artist": t["artist"] or "", "status": t["status"], "error": t["error"],
+    return {"id": t["id"], "guide": guide_file(t["id"]) is not None, "title": t["title"], "artist": t["artist"] or "", "status": t["status"], "error": t["error"],
             "duration": t["duration"], "frag_start": t["frag_start"], "frag_end": t["frag_end"],
             "lines": json.loads(t["lines"]) if t["lines"] else [],
             "instrumental": bool(t["instrumental"]),
@@ -455,8 +478,20 @@ async def upload_chunk(uid: str, request: Request, offset: int = 0, u=Depends(cu
     return {"size": cur + len(body)}
 
 
+@app.post("/api/tracks/{tid}/guide")
+async def add_guide(tid: str, guide: UploadFile = File(...), u=Depends(current_user)):
+    t = q("SELECT * FROM tracks WHERE id=? AND user_id=?", (tid, u["id"]), one=True)
+    if not t:
+        raise HTTPException(404)
+    if q("SELECT 1 FROM edits WHERE user_id=? AND status IN ('queued','rendering')", (u["id"],), one=True):
+        raise HTTPException(429, "Сейчас идёт монтаж — подожди, потом добавь гайд")
+    await save_guide(tid, guide)
+    q("UPDATE tracks SET status='queued', error=NULL WHERE id=?", (tid,))
+    return track_json(q("SELECT * FROM tracks WHERE id=?", (tid,), one=True))
+
+
 @app.post("/api/tracks")
-async def upload_track(audio: UploadFile | None = File(None), upload_id: str = Form(""), filename: str = Form(""),
+async def upload_track(audio: UploadFile | None = File(None), guide: UploadFile | None = File(None), upload_id: str = Form(""), filename: str = Form(""),
                        title: str = Form(""), lyrics: str = Form(""),
                        instrumental: bool = Form(False), artist: str = Form(""),
                        cover: UploadFile | None = File(None), u=Depends(current_user)):
@@ -508,6 +543,8 @@ async def upload_track(audio: UploadFile | None = File(None), upload_id: str = F
         artist, title = await asyncio.to_thread(guess_artist, path, title)
     q("INSERT INTO tracks(id,user_id,title,artist,audio,lyrics,status,duration,created) VALUES(?,?,?,?,?,?,?,?,?)",
       (tid, u["id"], title[:80], artist[:60], str(path), lyrics.strip(), "queued", dur, time.time()))
+    if guide is not None and guide.filename:
+        await save_guide(tid, guide)
     if instrumental:
         q("UPDATE tracks SET instrumental=1, lyrics='' WHERE id=?", (tid,))
     if cover is not None and cover.filename:
@@ -823,7 +860,8 @@ def process_track(t: sqlite3.Row):
     if FAKE_ASR:
         words, segs = align.fake_transcribe(t["lyrics"] or "ля ля ля", dur)
     else:
-        r = run_job("transcribe", {"audio": t["audio"], "lyrics": t["lyrics"]}, nice=5)   # nice 15 голодал рядом с рендерами автопостинга и не укладывался в полчаса
+        g = guide_file(t["id"])
+        r = run_job("transcribe", {"audio": str(g or t["audio"]), "lyrics": t["lyrics"]}, nice=5)   # nice 15 голодал рядом с рендерами автопостинга и не укладывался в полчаса
         words = [align.Word(w, s, e) for w, s, e in r["words"]]
         segs = [tuple(x) for x in r["segs"]]
     lines = align.align_lines(lyr, words, dur) if lyr else align.lines_from_segments(segs)
