@@ -289,7 +289,8 @@ input[type=range]{accent-color:var(--acc)}
   </div>
   <button class="btn acc" id="linesSave" data-go="home" data-toast="Трек в автопилоте ✓">Всё верно — в автопилот</button>
   <div class="mute" id="linesMsg" style="text-align:center;font-size:13px;min-height:18px"></div>
-  <button class="chip live-only" id="linesGuide" style="align-self:stretch;justify-content:center;height:46px">🎙 Добавить голос-гайд для точной синхронизации</button>
+  <button class="chip live-only" id="linesRec" style="align-self:stretch;justify-content:center;height:46px;background:var(--acc);color:#0B0B0C">🎙 Записать голос-гайд: говори текст под трек</button>
+  <button class="chip live-only" id="linesGuide" style="align-self:stretch;justify-content:center;height:40px">Или загрузить готовую запись</button>
   <input type="file" id="guideFile" accept="audio/*,video/*,.m4a,.mp3,.wav,.aac,.ogg" style="display:none">
   <div class="mute" style="text-align:center;font-size:12px;margin-top:-6px">Запиши голосом разговором текст песни слово в слово под трек (в CapCut или голосовых). Мы распознаем его, а не песню.</div>
   <button class="live-only" id="linesDel" style="align-self:center;color:#ff6b6b;font-size:13px;padding:8px 12px">Удалить трек</button>
@@ -507,6 +508,13 @@ input[type=range]{accent-color:var(--acc)}
 <div id="pv" style="display:none;position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.92);flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:16px">
   <video id="pvVid" playsinline muted loop autoplay style="max-height:72vh;max-width:100%;aspect-ratio:9/16;border-radius:14px;background:#000"></video>
   <div style="display:flex;gap:10px;width:100%;max-width:360px"><button class="chip" id="pvSel" style="flex:1;justify-content:center;background:var(--acc);color:#0B0B0C">Выбрать</button><button class="chip" id="pvClose" style="flex:1;justify-content:center">Закрыть</button></div>
+</div>
+<div id="recOv" style="display:none;position:fixed;inset:0;z-index:70;background:#0B0B0C;flex-direction:column;padding:20px 16px;gap:14px">
+  <div style="display:flex;align-items:center;justify-content:space-between"><b id="recTitle" style="font-size:17px">Говори текст вместе с треком</b><span id="recTime" class="mute" style="font-variant-numeric:tabular-nums">0:00</span></div>
+  <div class="mute" style="font-size:13px">Надень наушники, иначе микрофон запишет музыку вместо голоса. Говори, а не пой, слово в слово, в ритм.</div>
+  <div id="recLines" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:30px 0;scrollbar-width:none;text-align:center"></div>
+  <div id="recCount" style="display:none;position:absolute;inset:0;align-items:center;justify-content:center;font-size:96px;font-weight:800;background:rgba(11,11,12,.85)">3</div>
+  <div style="display:flex;gap:10px"><button class="chip" id="recCancel" style="flex:1;justify-content:center;height:52px">Отмена</button><button class="chip" id="recStop" style="flex:2;justify-content:center;height:52px;background:var(--acc);color:#0B0B0C">Готово</button></div>
 </div>
 <div id="pick" style="display:none;position:fixed;inset:0;z-index:50;background:#0B0B0C;flex-direction:column">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;gap:8px">
@@ -1373,6 +1381,66 @@ $('#render').onclick = () => renderEdit().catch(err => {
   }
   $('#linesDel').onclick = () => cur && deleteTrack(cur);
   $('#linesGuide').onclick = () => $('#guideFile').click();
+  /* запись голос-гайда прямо в приложении: стартует трек, ты проговариваешь текст */
+  let recSt = null;
+  const fmtT = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+  async function sendGuide(blob, name, offset) {
+    toast('Загружаем гайд…');
+    const fd = new FormData(); fd.append('guide', blob, name); fd.append('offset', String(offset || 0));
+    const r = await fetch(A('api/tracks/' + cur.id + '/guide'), { method: 'POST', headers: H, body: fd });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || ('Ошибка ' + r.status));
+    stopPlayback(); toast('Гайд принят, переставляем строки. Бот напишет, когда будет готово'); go('tracks');
+  }
+  function recEnd(cancel) {
+    const s = recSt; if (!s) return; recSt = null;
+    cancelAnimationFrame(s.raf); player.pause(); player.onended = null;
+    $('#recOv').style.display = 'none'; $('#recCount').style.display = 'none';
+    s.stream.getTracks().forEach(t => t.stop());
+    s.rec.onstop = async () => {
+      if (cancel) return;
+      const blob = new Blob(s.chunks, { type: s.rec.mimeType || 'audio/webm' });
+      if (blob.size < 20000) return toast('Запись пустая, попробуй ещё раз');
+      try { await sendGuide(blob, 'guide.' + (/mp4/.test(blob.type) ? 'm4a' : 'webm'), s.offset); } catch (e) { toast(e.message); }
+    };
+    try { s.rec.state !== 'inactive' && s.rec.stop(); } catch (e) {}
+    if (s.rec.state === 'inactive' && !cancel) s.rec.onstop();
+  }
+  $('#linesRec').onclick = async () => {
+    if (!cur || recSt) return;
+    if (!navigator.mediaDevices || !window.MediaRecorder) return toast('Запись тут недоступна. Запиши голос в CapCut и загрузи файлом');
+    let stream;
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }); }
+    catch (e) { return toast('Нет доступа к микрофону. Разреши его или загрузи готовую запись'); }
+    const mt = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'].find(t => MediaRecorder.isTypeSupported(t));
+    const rec = new MediaRecorder(stream, mt ? { mimeType: mt } : {});
+    const s = recSt = { stream, rec, chunks: [], offset: 0, raf: 0 };
+    rec.ondataavailable = e => e.data && e.data.size && s.chunks.push(e.data);
+    $('#recLines').innerHTML = (cur.lines || []).map((l, i) => `<div data-i="${i}" style="font-size:20px;line-height:1.3;opacity:.35;transition:opacity .2s">${esc(l.text)}</div>`).join('');
+    $('#recOv').style.display = 'flex';
+    stopPlayback(); player.currentTime = 0;
+    const cnt = $('#recCount'); cnt.style.display = 'flex';
+    for (let n = 3; n > 0; n--) { cnt.textContent = n; await new Promise(r => setTimeout(r, 900)); if (recSt !== s) return; }
+    cnt.style.display = 'none';
+    let tRec = 0;
+    rec.onstart = () => { tRec = performance.now(); };
+    rec.start(1000);
+    await new Promise(r => setTimeout(r, 250));
+    if (recSt !== s) return;
+    const tp = performance.now();
+    try { await player.play(); } catch (e) { recEnd(true); return toast('Не удалось запустить трек'); }
+    s.offset = Math.max(0, ((performance.now() - (tRec || tp)) / 1000) - 0.05);   // запись пошла раньше музыки на эту величину
+    player.onended = () => recEnd(false);
+    const tick = () => {
+      if (recSt !== s) return;
+      const t = player.currentTime; $('#recTime').textContent = fmtT(t);
+      const ls = cur.lines || []; let ci = -1; ls.forEach((l, i) => { if (l.start <= t + 0.2) ci = i; });
+      $$('#recLines [data-i]').forEach(d => { const on = +d.dataset.i === ci; d.style.opacity = on ? 1 : .35; if (on && d.dataset.s !== '1') { d.dataset.s = '1'; d.scrollIntoView({ block: 'center', behavior: 'smooth' }); } if (!on) d.dataset.s = ''; });
+      s.raf = requestAnimationFrame(tick);
+    };
+    tick();
+  };
+  $('#recStop').onclick = () => recEnd(false);
+  $('#recCancel').onclick = () => recEnd(true);
   $('#guideFile').onchange = async e => {
     const f = e.target.files[0]; e.target.value = ''; if (!f || !cur) return;
     toast('Загружаем гайд…');

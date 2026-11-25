@@ -157,13 +157,13 @@ app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_methods=["G
 
 
 def guide_file(tid: str) -> Path | None:
-    g = sorted((DATA / "tracks").glob(f"{tid}_guide.*"))
+    g = sorted(p for p in (DATA / "tracks").glob(f"{tid}_guide.*") if p.suffix != ".offset")
     return g[0] if g else None
 
 
 async def save_guide(tid: str, up: UploadFile) -> Path:
     """Голос-гайд: запись голосом (разговором, слово в слово), сделанная поверх трека. Распознаём её, а не трек — слова слышны чисто."""
-    for old in (DATA / "tracks").glob(f"{tid}_guide.*"):
+    for old in list((DATA / "tracks").glob(f"{tid}_guide.*")):
         old.unlink(missing_ok=True)
     ext = (Path(up.filename or "g.m4a").suffix or ".m4a").lower()[:6]
     path = DATA / "tracks" / f"{tid}_guide{ext}"
@@ -479,13 +479,15 @@ async def upload_chunk(uid: str, request: Request, offset: int = 0, u=Depends(cu
 
 
 @app.post("/api/tracks/{tid}/guide")
-async def add_guide(tid: str, guide: UploadFile = File(...), u=Depends(current_user)):
+async def add_guide(tid: str, guide: UploadFile = File(...), offset: float = Form(0.0), u=Depends(current_user)):
     t = q("SELECT * FROM tracks WHERE id=? AND user_id=?", (tid, u["id"]), one=True)
     if not t:
         raise HTTPException(404)
     if q("SELECT 1 FROM edits WHERE user_id=? AND status IN ('queued','rendering')", (u["id"],), one=True):
         raise HTTPException(429, "Сейчас идёт монтаж — подожди, потом добавь гайд")
     await save_guide(tid, guide)
+    # offset: на сколько секунд позже записи стартовал трек (запись в приложении включается чуть раньше музыки)
+    (DATA / "tracks" / f"{tid}_guide.offset").write_text(str(max(0.0, min(offset, 5.0))))
     q("UPDATE tracks SET status='queued', error=NULL WHERE id=?", (tid,))
     return track_json(q("SELECT * FROM tracks WHERE id=?", (tid,), one=True))
 
@@ -862,8 +864,13 @@ def process_track(t: sqlite3.Row):
     else:
         g = guide_file(t["id"])
         r = run_job("transcribe", {"audio": str(g or t["audio"]), "lyrics": t["lyrics"]}, nice=5)   # nice 15 голодал рядом с рендерами автопостинга и не укладывался в полчаса
-        words = [align.Word(w, s, e) for w, s, e in r["words"]]
-        segs = [tuple(x) for x in r["segs"]]
+        shift = 0.0
+        try:
+            shift = float((DATA / "tracks" / f"{t['id']}_guide.offset").read_text()) if g else 0.0
+        except Exception:
+            pass
+        words = [align.Word(w, max(0.0, s - shift), max(0.0, e - shift)) for w, s, e in r["words"]]
+        segs = [(max(0.0, a - shift), max(0.0, b - shift), tx) for a, b, tx in (tuple(x) for x in r["segs"])]
     lines = align.align_lines(lyr, words, dur) if lyr else align.lines_from_segments(segs)
     if not lines:
         raise RuntimeError("не удалось распознать текст — добавь текст вручную")
