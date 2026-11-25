@@ -10,6 +10,7 @@ import os
 import random
 import subprocess
 import tempfile
+import dataclasses
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -34,6 +35,9 @@ class Style:
     color: str = "FFFFFF"       # цвет текста, hex RRGGBB
     cut: float = 1.0            # средняя длина склейки, сек
     darken: float = 0.10        # затемнение под текст (0..0.4)
+    anim: str = "fade"          # появление текста: fade / pop / rise / blur / spread / drop / glitch / mix
+    invert: bool = False        # текст инвертирует цвета картинки под собой
+    grade: str = ""             # цветокоррекция: "" / "cyan"
     letter_case: str = ""        # "upper" / "lower" / "" — как в тексте
     show_next: bool = False     # показывать следующую строку блекло (режим line)
     watermark: str | None = None  # надпись внизу (бесплатный тариф)
@@ -102,8 +106,39 @@ def _ass_escape(text: str) -> str:
 
 # ---------- субтитры ----------
 
+def _anim_line(kind: str, cx: int, cy: int, i: int) -> str:
+    if kind == "fade":
+        return f"{{\\pos({cx},{cy})\\fad(180,150)}}"
+    return _anim(kind, cx, cy, i)
+
+
+ANIMS = ("fade", "pop", "rise", "blur", "spread", "drop", "glitch")
+
+
+def _anim(kind: str, cx: int, cy: int, i: int) -> str:
+    """ASS-теги появления текста. i — номер слова/строки (для «микса» выбираем по кругу, но детерминированно)."""
+    if kind == "mix":
+        kind = ("pop", "rise", "blur", "spread", "drop", "glitch")[(i * 5 + 2) % 6]
+    pos = f"\\pos({cx},{cy})"
+    if kind == "pop":
+        return f"{{{pos}\\fscx55\\fscy55\\fad(40,40)\\t(0,130,\\fscx114\\fscy114)\\t(130,240,\\fscx100\\fscy100)}}"
+    if kind == "rise":
+        return f"{{\\move({cx},{cy + 70},{cx},{cy},0,210)\\fad(90,40)}}"
+    if kind == "blur":
+        return f"{{{pos}\\blur16\\alpha&HFF&\\t(0,240,\\blur0\\alpha&H00&)}}"
+    if kind == "spread":
+        return f"{{{pos}\\fsp46\\alpha&HFF&\\t(0,300,\\fsp0\\alpha&H00&)\\fad(0,40)}}"
+    if kind == "drop":
+        return f"{{\\move({cx},{cy - 80},{cx},{cy},0,200)\\frz-7\\t(0,200,\\frz0)\\fad(60,40)}}"
+    if kind == "glitch":
+        return f"{{{pos}\\fscx122\\blur4\\fad(0,40)\\t(0,70,\\fscx92)\\t(70,140,\\fscx100\\blur0)}}"
+    return f"{{{pos}\\fad(60,40)}}"
+
+
 def build_ass(lines: list[Line], offset: float, length: float, style: Style) -> str:
     """Строки -> ASS-файл. offset — где начинается отрывок в треке."""
+    if style.invert:
+        style = dataclasses.replace(style, color="FFFFFF")     # маска инверсии: белый текст на чёрном
     fs = style.font_size
     header = f"""[Script Info]
 ScriptType: v4.00+
@@ -146,18 +181,18 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     if we <= ws or ws >= length:
                         continue
                     ev.append(f"Dialogue: 0,{_ass_time(ws)},{_ass_time(we)},Word,,0,0,0,,"
-                              f"{{\\pos({cx},{cy})\\fad(60,40)}}{_ass_escape(w)}")
+                              f"{_anim(style.anim, cx, cy, k + i)}{_ass_escape(w)}")
             else:       # времён слов нет (строка угадана или отредактирована) — делим время строки по числу букв
                 total = sum(len(w) + 2 for w in words)
                 t = s
                 for w in words:
                     d = (e - s) * (len(w) + 2) / total
                     ev.append(f"Dialogue: 0,{_ass_time(t)},{_ass_time(t + d)},Word,,0,0,0,,"
-                              f"{{\\pos({cx},{cy})\\fad(60,40)}}{_ass_escape(w)}")
+                              f"{_anim(style.anim, cx, cy, len(ev))}{_ass_escape(w)}")
                     t += d
         else:
             ev.append(f"Dialogue: 1,{_ass_time(s)},{_ass_time(e)},Main,,0,0,0,,"
-                      f"{{\\pos({cx},{cy})\\fad(180,150)}}{_ass_escape(ln.text)}")
+                      f"{_anim_line(style.anim, cx, cy, i)}{_ass_escape(ln.text)}")
             if style.show_next and i + 1 < len(visible):
                 nxt = visible[i + 1]
                 ev.append(f"Dialogue: 0,{_ass_time(s)},{_ass_time(e)},Next,,0,0,0,,"
@@ -227,18 +262,25 @@ def render_edit(job: EditJob) -> Path:
             )
         chain = "".join(f"[v{i}]" for i in range(len(plan)))
         look = []
-        if st.bw:
+        if st.grade == "cyan":
+            look.append("hue=s=0,colorchannelmixer=rr=0.10:gg=0.66:bb=1.0,eq=contrast=1.12")
+        elif st.bw:
             look.append("hue=s=0")
         if st.darken > 0:
             look.append(f"eq=brightness={-st.darken:.2f}:contrast=1.05")
         look.append("vignette=PI/5")
         ass_arg = str(ass_path).replace("\\", "/").replace(":", "\\:")
-        if st.fonts_dir:
-            fd = str(st.fonts_dir).replace("\\", "/").replace(":", "\\:")
-            look.append(f"ass=filename='{ass_arg}':fontsdir='{fd}'")
+        ass_f = (f"ass=filename='{ass_arg}':fontsdir='" + str(st.fonts_dir).replace("\\", "/").replace(":", "\\:") + "'"
+                 if st.fonts_dir else f"ass='{ass_arg}'")
+        if st.invert:
+            # текст рисуем белым на чёрном (это маска) и в его контуре берём негатив картинки
+            parts.append(f"{chain}concat=n={len(plan)}:v=1:a=0,{','.join(look)},format=gbrp,split[ba][bb]")
+            parts.append("[bb]negate[bn]")
+            parts.append(f"color=c=black:s={W}x{H}:r={FPS}:d={length:.3f},format=gbrp,{ass_f},format=gbrp[bm]")
+            parts.append("[ba][bn][bm]maskedmerge,format=yuv420p[vout]")
         else:
-            look.append(f"ass='{ass_arg}'")
-        parts.append(f"{chain}concat=n={len(plan)}:v=1:a=0,{','.join(look)}[vout]")
+            look.append(ass_f)
+            parts.append(f"{chain}concat=n={len(plan)}:v=1:a=0,{','.join(look)}[vout]")
         a_idx = len(plan)
         parts.append(f"[{a_idx}:a]afade=t=in:d=0.25,afade=t=out:st={max(0, length-0.6):.3f}:d=0.6[aout]")
 

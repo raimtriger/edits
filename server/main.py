@@ -638,6 +638,9 @@ class EditIn(BaseModel):
     mode: str = "line"
     bw: bool = False
     color: str = "FFFFFF"     # цвет текста эдита, hex RRGGBB
+    anim: str = "fade"        # появление текста
+    invert: bool = False      # инверсия цвета под текстом
+    grade: str = ""           # "" / "cyan"
     case: str = ""            # "upper" / "lower" / "" — регистр текста эдита
     footage: str = "mix"
     clips: list[str] = []      # свой выбор кадров (id из /api/footage/{key}/clips); пусто — случайные из категории
@@ -675,7 +678,8 @@ def make_edit(body: EditIn, u=Depends(current_user)):
         q("UPDATE users SET free_left=free_left-1 WHERE id=?", (u["id"],))
     eid = uuid.uuid4().hex
     font = body.font if (body.font in FONTS or user_font(u["id"], body.font)) else "inter"
-    params = {"mode": body.mode if body.mode in ("line", "word") else "line", "bw": body.bw, "case": body.case if body.case in ("upper", "lower") else "",
+    params = {"mode": body.mode if body.mode in ("line", "word") else "line", "bw": body.bw, "anim": body.anim if body.anim in ("fade", "pop", "rise", "blur", "spread", "drop", "glitch", "mix") else "fade",
+              "invert": bool(body.invert), "grade": "cyan" if body.grade == "cyan" else "", "case": body.case if body.case in ("upper", "lower") else "",
               "color": body.color if re.fullmatch(r"[0-9A-Fa-f]{6}", body.color or "") else "FFFFFF",
               "footage": body.footage, "clips": [c for c in body.clips if c in clip_index()][:30], "font": font, "watermark": not u["is_owner"],
               "kind": "cover" if body.kind == "cover" else "edit", "caption": body.caption.strip().upper()[:24],
@@ -916,7 +920,7 @@ def process_edit(e: sqlite3.Row):
             os.symlink(uf["path"], Path(tmp_fonts.name) / ("user" + Path(uf["path"]).suffix))
             family = uf["family"]
     st = render.Style(mode=p["mode"], bw=p["bw"], color=p.get("color", "FFFFFF"), seed=random.randint(1, 10**9), font=family,
-                      letter_case=p.get("case", ""), font_size=int(72 * 0.75 * scale), fonts_dir=tmp_fonts.name,
+                      letter_case=p.get("case", ""), anim=p.get("anim", "fade"), invert=bool(p.get("invert")), grade=p.get("grade", ""), font_size=int(72 * 0.75 * scale), fonts_dir=tmp_fonts.name,
                       watermark="LUDUS EDITS" if p.get("watermark") else None)
     t0 = time.time()
     try:
