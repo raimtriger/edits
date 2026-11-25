@@ -53,8 +53,8 @@ STYLES = [
      "fields": ["caption", "title", "artist"], "needs_lines": False, "preview": None,
      "formats": {"9x16": "ready", "16x9": "soon", "1x1": "soon"}},
     {"id": "premiere_classic", "title": "Классика", "tag": "Премьера",
-     "desc": "Обложка влетает с 3D-поворотом, пульсирует под бит, надпись набирается по буквам.",
-     "fields": ["caption"], "needs_lines": False, "preview": None,
+     "desc": "Обложка влетает с 3D-поворотом, пульсирует под бит, надпись набирается по буквам, под ней название песни и артист.",
+     "fields": ["caption", "title", "artist"], "needs_lines": False, "preview": None,
      "formats": {"9x16": "ready", "16x9": "soon", "1x1": "soon"}},
     {"id": "premiere_karaoke", "title": "Караоке", "tag": "Премьера · YouTube",
      "desc": "Обложка и строки песни в такт: текущая строка подсвечивается. Для караоке-видео на YouTube.",
@@ -78,7 +78,8 @@ DEFAULT_STYLE, DEFAULT_FORMAT = "premiere_classic", "9x16"
 def _render_classic(*, cover, audio, out, start, dur, font_path, fmt, fields, lines):
     """Существующая анимация «Премьера · классика», только вертикаль 1080x1920."""
     from .cover_anim import render_cover_anim
-    render_cover_anim(cover, audio, out, start, dur, title=fields.get("caption") or "ПРЕМЬЕРА", font_path=font_path)
+    render_cover_anim(cover, audio, out, start, dur, title=fields.get("caption") or "ПРЕМЬЕРА", font_path=font_path,
+                      song=fields.get("title") or "", artist=fields.get("artist") or "")
 
 
 def _render_glow(*, cover, audio, out, start, dur, font_path, fmt, fields, lines):

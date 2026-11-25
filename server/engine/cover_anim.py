@@ -59,7 +59,7 @@ def bump(t, c, w): return math.exp(-((t - c) / w) ** 2)
 
 def render_cover_anim(cover: str, audio: str, out: str, start: float, dur: float,
                       title: str = "ПРЕМЬЕРА", font_path: str | None = None, title_size: int = 92,
-                      seed: int = 7) -> str:
+                      seed: int = 7, song: str = "", artist: str = "") -> str:
     dur = float(max(8.0, min(30.0, dur)))
     N = int(FPS * dur)
     rng = np.random.default_rng(seed)
@@ -135,6 +135,21 @@ def render_cover_anim(cover: str, audio: str, out: str, start: float, dur: float
     while w1 > W * 0.86 and size > 40:          # длинный текст — уменьшаем, чтобы влез
         size -= 6
         g1, w1 = glyphs(title, size, 6, (255, 255, 255, 255))
+    size_cap = int(size * 1.2) if g1 else 0       # на сколько ниже надписи встают название и артист
+
+    def fit_line(text, size0, track, color, minsize=30):
+        text = (text or "").strip()
+        if not text:
+            return [], 0, size0
+        sz = size0
+        g, w = glyphs(text, sz, track, color)
+        while w > W * 0.84 and sz > minsize:
+            sz -= 4
+            g, w = glyphs(text, sz, track, color)
+        return g, w, sz
+
+    g2, w2, sz2 = fit_line(song, 62, 3, (255, 255, 255, 255))            # название песни
+    g3, w3, sz3 = fit_line(artist, 44, 4, (214, 214, 220, 255))          # артист — чуть тише
 
     def blit(canvas, rgba, x, y, alpha):
         h, w = rgba.shape[:2]
@@ -252,6 +267,11 @@ def render_cover_anim(cover: str, audio: str, out: str, start: float, dur: float
         if g1:
             ty = cy + size / 2 + 170          # ниже, чем в v4
             draw_text(canvas, g1, w1, ty, TEXT_T0 - 0.05, stagger, 0.3, t, out_k)
+        y2 = (cy + size / 2 + 170 + (size_cap if g1 else 0))
+        if g2:
+            draw_text(canvas, g2, w2, y2, TEXT_T0 + 0.45, max(0.03, stagger * 0.6), 0.3, t, out_k)
+        if g3:
+            draw_text(canvas, g3, w3, y2 + (sz2 * 1.25 if g2 else 0), TEXT_T0 + 0.9, max(0.03, stagger * 0.6), 0.3, t, out_k)
 
         lk = sum(bump(t, c, 0.5) for c in FOCUS)
         if lk > 0.01:
