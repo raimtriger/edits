@@ -261,6 +261,7 @@ def _fill_gaps(out: list[dict], total: float, words: list[Word] | None = None) -
             for k in range(cnt):
                 out[i + k]["start"] = round(left + k * step, 2)
                 out[i + k]["end"] = round(left + (k + 1) * step, 2)
+                out[i + k]["guess"] = True            # голоса тут нет: в эдит такую строку не ставим (как в автопостинге), в редакторе она видна
         i = j
     # все строки внутри трека и по порядку: не выходим за конец и не накладываемся
     for k in range(n - 1, -1, -1):

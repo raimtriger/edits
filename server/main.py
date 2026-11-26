@@ -902,7 +902,7 @@ def process_edit(e: sqlite3.Row):
         clips = picked
     if not clips:
         raise RuntimeError("в библиотеке нет футажей — положи видео в /opt/edits/footage/")
-    lines = [render.Line(l["start"], l["end"], l["text"], l.get("wt")) for l in json.loads(t["lines"])]
+    lines = [render.Line(l["start"], l["end"], l["text"], l.get("wt")) for l in json.loads(t["lines"]) if not l.get("guess")]
     fs, fe = t["frag_start"], t["frag_end"]
     frag = [l for l in lines if l.end > fs and l.start < fe]
     out = DATA / "edits" / f"{e['id']}.mp4"
