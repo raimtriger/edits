@@ -304,7 +304,15 @@ input[type=range]{accent-color:var(--acc)}
     <div id="recRow" style="display:none;flex-wrap:wrap;gap:8px;align-items:center"></div></div>
   <div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Футажи</span><div id="foot" style="display:flex;flex-wrap:wrap;gap:8px"></div>
     <button class="chip live-only" id="pickBtn" style="flex:none;width:100%;height:46px;min-height:46px;border:1.5px dashed #3A3A40;background:transparent;display:flex;align-items:center;justify-content:center">Выбрать кадры вручную</button></div>
-  <div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Текст</span>
+  <div id="presetBlock" class="live-only" style="flex-direction:column;gap:8px"><span class="lbl">Стиль</span>
+    <div id="presetRow" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <button class="tog on" data-pr="classic" style="height:64px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px"><b>Классика</b><span class="mute" style="font-size:11px;font-weight:500">плавно, белый</span></button>
+      <button class="tog" data-pr="cyan" style="height:64px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px"><b style="color:#2BC4FF">Циан</b><span class="mute" style="font-size:11px;font-weight:500">как у топовых эдитов</span></button>
+      <button class="tog" data-pr="invert" style="height:64px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px"><b>Инверсия</b><span class="mute" style="font-size:11px;font-weight:500">текст меняет цвет кадра</span></button>
+      <button class="tog" data-pr="bw" style="height:64px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px"><b>Ч/Б плёнка</b><span class="mute" style="font-size:11px;font-weight:500">строго и дорого</span></button>
+    </div></div>
+  <details id="adv" style="display:flex;flex-direction:column"><summary style="cursor:pointer;list-style:none;padding:12px 14px;border-radius:14px;background:var(--card);font-weight:600;font-size:14px;display:flex;justify-content:space-between;align-items:center">Тонкая настройка<span class="mute" style="font-size:12px;font-weight:500">анимация · регистр · цвет · шрифт</span></summary>
+  <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px"><span class="lbl">Текст</span>
     <div class="grid3"><button class="tog on" data-m="line" style="display:none">Строкой</button><button class="tog" id="bw">Ч/Б</button></div>
     <div class="mute" style="font-size:13px;margin:4px 0 -2px">Появление текста</div>
     <div id="animSeg" style="display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px"><button class="tog on" data-a="fade" style="flex:none;padding:0 14px">Плавно</button><button class="tog" data-a="pop" style="flex:none;padding:0 14px">Поп</button><button class="tog" data-a="rise" style="flex:none;padding:0 14px">Снизу</button><button class="tog" data-a="drop" style="flex:none;padding:0 14px">Сверху</button><button class="tog" data-a="blur" style="flex:none;padding:0 14px">Размытие</button><button class="tog" data-a="spread" style="flex:none;padding:0 14px">Разъезд</button><button class="tog" data-a="glitch" style="flex:none;padding:0 14px">Глитч</button><button class="tog" data-a="mix" style="flex:none;padding:0 14px">Микс</button></div>
@@ -329,6 +337,7 @@ input[type=range]{accent-color:var(--acc)}
     <div id="fontChips" style="display:flex;flex-wrap:wrap;gap:8px"></div>
     <input type="file" id="fontFile" class="vh">
   </div>
+  </details>
   <div class="card mute" id="hint"></div>
   <button class="btn acc" id="mount" style="height:56px;font-size:16px">Смонтировать · ~40 с</button>
   <div id="liveEdits" style="display:none;flex-direction:column;gap:10px"></div>
@@ -1180,7 +1189,14 @@ $('#render').onclick = () => renderEdit().catch(err => {
         <span class="mute">Трек целиком, mp3 или wav. Текст распознаем, припев найдём и смонтируем эдит. Выше — пример, как это выглядит.</span>
         <button class="btn acc" data-go="upload">Загрузить трек</button></div>`);
     }
+    const tile = (k, ic, t, d) => `<button class="card" data-act="${k}" style="display:flex;flex-direction:column;gap:6px;text-align:left;align-items:flex-start;padding:14px"><span style="font-size:24px">${ic}</span><b style="font-size:15px">${t}</b><span class="mute" style="font-size:12px;line-height:1.3">${d}</span></button>`;
+    parts.push(`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${tile('edit', '🎬', 'Новый эдит', 'Припев + футажи + строки. Один тап')}${tile('cover', '💿', 'Обложка', 'Анимация для релиза')}</div>
+      <button class="card row" data-act="auto" style="justify-content:space-between;text-align:left;width:100%;padding:14px"><span style="display:flex;flex-direction:column;gap:3px"><b style="font-size:15px">⚡ Авто-режим</b><span class="mute" style="font-size:12px">Сам шлёт эдит в бот в нужное время</span></span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#A3A3A8" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg></button>`);
     $('#liveHome').innerHTML = parts.join('');
+    $$('#liveHome [data-act]').forEach(b => b.onclick = () => { const k = b.dataset.act;
+      if (k === 'auto') { go('profile'); setTimeout(() => $('#autoCard').scrollIntoView({ behavior: 'smooth', block: 'start' }), 150); return; }
+      if (!tracks.some(t => t.status === 'ready')) { go(tracks.length ? 'tracks' : 'upload'); return toast(tracks.length ? 'Дождись, пока трек обработается' : 'Сначала загрузи трек'); }
+      selKind = k; paintKind(); go('studio'); });
     const hb = $('#hBot'); if (hb) hb.onclick = () => { try { window.Telegram.WebApp.close(); } catch (e) {} };
     const again = $('#hAgain');
     if (again) again.onclick = async () => {
@@ -1438,6 +1454,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
     const cov = selKind === 'cover';
     footBlock.style.display = cov ? 'none' : ''; modeBlock.style.display = cov ? 'none' : ''; $('#tplBlock').style.setProperty('display', cov ? 'none' : 'flex', 'important');
     $('#coverBox').style.setProperty('display', cov ? 'flex' : 'none', 'important');
+    $('#presetBlock').style.setProperty('display', cov ? 'none' : 'flex', 'important');
     if (cov) paintCover();
     else {
       if (!mountBtn.disabled) { mountBtn.textContent = 'Смонтировать'; mountBtn.style.opacity = 1; }
@@ -1605,6 +1622,13 @@ $('#render').onclick = () => renderEdit().catch(err => {
     if ($('#bw').classList.contains('on') !== !!o.bw) $('#bw').click();
     if (o.foot) { selFoot = o.foot; loadFoot().catch(() => {}); }
   }
+  const PRESETS = {
+    classic: { anim: 'fade', invert: false, grade: '', bw: false, case: '', color: 'FFFFFF', mode: 'line' },
+    cyan: { anim: 'pop', invert: false, grade: 'cyan', bw: false, case: 'upper', color: 'FFFFFF', mode: 'line' },
+    invert: { anim: 'pop', invert: true, grade: '', bw: false, case: 'upper', color: 'FFFFFF', mode: 'line' },
+    bw: { anim: 'fade', invert: false, grade: '', bw: true, case: '', color: 'FFFFFF', mode: 'line' } };
+  $('#presetRow').onclick = e => { const b = e.target.closest('[data-pr]'); if (!b) return;
+    applyStyleObj(PRESETS[b.dataset.pr]); $$('#presetRow .tog').forEach(x => x.classList.toggle('on', x === b)); };
   const styleLabel = o => ((fonts.find(f => f.key === o.font) || {}).name || 'Шрифт') + ' · ' + (o.mode === 'word' ? 'по слову' : 'строкой') + (o.bw ? ' · ч/б' : '');
   const dot = c => `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#${c};margin-right:6px;border:1px solid #3A3A40"></span>`;
   function paintTpl() {
