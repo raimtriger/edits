@@ -289,9 +289,6 @@ input[type=range]{accent-color:var(--acc)}
   </div>
   <button class="btn acc" id="linesSave" data-go="home" data-toast="Трек в автопилоте ✓">Всё верно — в автопилот</button>
   <div class="mute" id="linesMsg" style="text-align:center;font-size:13px;min-height:18px"></div>
-  <button class="chip live-only" id="linesGuide" style="align-self:stretch;justify-content:center;height:46px">🎙 Добавить голос-гайд для точной синхронизации</button>
-  <input type="file" id="guideFile" accept="audio/*,video/*,.m4a,.mp3,.wav,.aac,.ogg" style="display:none">
-  <div class="mute" style="text-align:center;font-size:12px;margin-top:-6px">Запиши голосом разговором текст песни слово в слово под трек (в CapCut или голосовых). Мы распознаем его, а не песню.</div>
   <button class="live-only" id="linesDel" style="align-self:center;color:#ff6b6b;font-size:13px;padding:8px 12px">Удалить трек</button>
 </section>
 
@@ -1372,17 +1369,6 @@ $('#render').onclick = () => renderEdit().catch(err => {
     catch (e) { toast(e.message); }
   }
   $('#linesDel').onclick = () => cur && deleteTrack(cur);
-  $('#linesGuide').onclick = () => $('#guideFile').click();
-  $('#guideFile').onchange = async e => {
-    const f = e.target.files[0]; e.target.value = ''; if (!f || !cur) return;
-    toast('Загружаем гайд…');
-    try {
-      const fd = new FormData(); fd.append('guide', f);
-      const r = await fetch(A('api/tracks/' + cur.id + '/guide'), { method: 'POST', headers: H, body: fd });
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || ('Ошибка ' + r.status));
-      stopPlayback(); toast('Гайд принят, переставляем строки. Бот напишет, когда будет готово'); go('tracks');
-    } catch (err) { toast(err.message); }
-  };
 
   /* студия */
   function renderStudioTracks() {
