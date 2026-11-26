@@ -863,14 +863,7 @@ def process_track(t: sqlite3.Row):
         words, segs = align.fake_transcribe(t["lyrics"] or "ля ля ля", dur)
     else:
         g = guide_file(t["id"])
-        src = str(g or t["audio"])
-        if g:
-            try:        # запись могла идти без наушников: вычитаем из неё сам трек, чтобы остался голос
-                from .engine import guide as guide_mod
-                src = guide_mod.suppress_music(str(g), t["audio"], str(DATA / "tracks" / f"{t['id']}_guide_clean.wav"))
-            except Exception as e:
-                log.warning("music suppression failed: %s", e)
-        r = run_job("transcribe", {"audio": src, "lyrics": t["lyrics"]}, nice=5)   # nice 15 голодал рядом с рендерами автопостинга и не укладывался в полчаса
+        r = run_job("transcribe", {"audio": str(g or t["audio"]), "lyrics": t["lyrics"]}, nice=5)   # nice 15 голодал рядом с рендерами автопостинга и не укладывался в полчаса
         shift = 0.0
         try:
             shift = float((DATA / "tracks" / f"{t['id']}_guide.offset").read_text()) if g else 0.0
