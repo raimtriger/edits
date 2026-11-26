@@ -678,7 +678,7 @@ def make_edit(body: EditIn, u=Depends(current_user)):
         q("UPDATE users SET free_left=free_left-1 WHERE id=?", (u["id"],))
     eid = uuid.uuid4().hex
     font = body.font if (body.font in FONTS or user_font(u["id"], body.font)) else "inter"
-    params = {"mode": body.mode if body.mode in ("line", "word") else "line", "bw": body.bw, "anim": body.anim if body.anim in ("fade", "pop", "rise", "blur", "spread", "drop", "glitch", "mix") else "fade",
+    params = {"mode": "line", "bw": body.bw, "anim": body.anim if body.anim in ("fade", "pop", "rise", "blur", "spread", "drop", "glitch", "mix") else "fade",
               "invert": bool(body.invert), "grade": "cyan" if body.grade == "cyan" else "", "case": body.case if body.case in ("upper", "lower") else "",
               "color": body.color if re.fullmatch(r"[0-9A-Fa-f]{6}", body.color or "") else "FFFFFF",
               "footage": body.footage, "clips": [c for c in body.clips if c in clip_index()][:30], "font": font, "watermark": not u["is_owner"],
@@ -982,10 +982,10 @@ def daily_tick():
         last = q("SELECT params FROM edits WHERE user_id=? AND status='done' AND params LIKE '%\"kind\": \"edit\"%' ORDER BY created DESC LIMIT 1", (u["id"],), one=True)
         lp = json.loads(last["params"]) if last else {}
         if cfg["style"] == "last" and lp:      # стиль берём из последнего эдита артиста, чтобы лента выглядела цельно
-            params = {k: lp[k] for k in ("mode", "bw", "footage", "font", "color", "case", "pos") if k in lp}
+            params = {"mode": "line", **{k: lp[k] for k in ("bw", "footage", "font", "color", "case", "pos") if k in lp}}
             params.update({"watermark": not u["is_owner"], "kind": "edit", "caption": "", "daily": True})
         else:
-            params = {"mode": random.choice(["line", "word"]), "bw": random.random() < 0.2, "footage": "mix",
+            params = {"mode": "line", "bw": random.random() < 0.2, "footage": "mix",
                       "font": lp.get("font") or "inter", "watermark": not u["is_owner"], "kind": "edit", "caption": "", "daily": True}
         if not u["is_owner"]:
             q("UPDATE users SET free_left=free_left-1 WHERE id=?", (u["id"],))
