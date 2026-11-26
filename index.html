@@ -299,9 +299,6 @@ input[type=range]{accent-color:var(--acc)}
   <div class="seg demo-only" id="seg"><button class="on" data-t="edits">Эдиты</button><button data-t="stories">Сторис</button><button data-t="youtube">YouTube</button></div>
   <div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Трек</span>
     <div class="card row" id="studioTrack" style="justify-content:space-between;padding:12px 14px"><span style="font-weight:600">«30» · припев 0:12–0:33</span><span class="mute">сменить</span></div><div id="liveTracks" style="display:none;flex-wrap:nowrap;gap:8px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding:2px 0 6px"></div></div>
-  <div id="tplBlock" class="live-only" style="flex-direction:column;gap:8px"><span class="lbl">Мои шаблоны</span>
-    <div id="tplRow" style="display:flex;flex-wrap:wrap;gap:8px"></div>
-    <div id="recRow" style="display:none;flex-wrap:wrap;gap:8px;align-items:center"></div></div>
   <div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Футажи</span><div id="foot" style="display:flex;flex-wrap:wrap;gap:8px"></div>
     <button class="chip live-only" id="pickBtn" style="flex:none;width:100%;height:46px;min-height:46px;border:1.5px dashed #3A3A40;background:transparent;display:flex;align-items:center;justify-content:center">Выбрать кадры вручную</button></div>
   <div id="presetBlock" class="live-only" style="flex-direction:column;gap:8px"><span class="lbl">Стиль</span>
@@ -312,6 +309,9 @@ input[type=range]{accent-color:var(--acc)}
       <button class="tog" data-pr="bw" style="height:64px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px"><b>Ч/Б плёнка</b><span class="mute" style="font-size:11px;font-weight:500">строго и дорого</span></button>
     </div></div>
   <details id="adv" style="display:flex;flex-direction:column"><summary style="cursor:pointer;list-style:none;padding:12px 14px;border-radius:14px;background:var(--card);font-weight:600;font-size:14px;display:flex;justify-content:space-between;align-items:center">Тонкая настройка<span class="mute" style="font-size:12px;font-weight:500">анимация · регистр · цвет · шрифт</span></summary>
+  <div style="margin-top:12px;display:flex;flex-direction:column"><div id="tplBlock" class="live-only" style="flex-direction:column;gap:8px"><span class="lbl">Мои сохранённые стили</span>
+    <div id="tplRow" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+    <div id="recRow" style="display:none;flex-wrap:wrap;gap:8px;align-items:center"></div></div></div>
   <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px"><span class="lbl">Текст</span>
     <div class="grid3"><button class="tog on" data-m="line" style="display:none">Строкой</button><button class="tog" id="bw">Ч/Б</button></div>
     <div class="mute" style="font-size:13px;margin:4px 0 -2px">Появление текста</div>
@@ -1629,14 +1629,14 @@ $('#render').onclick = () => renderEdit().catch(err => {
     bw: { anim: 'fade', invert: false, grade: '', bw: true, case: '', color: 'FFFFFF', mode: 'line' } };
   $('#presetRow').onclick = e => { const b = e.target.closest('[data-pr]'); if (!b) return;
     applyStyleObj(PRESETS[b.dataset.pr]); $$('#presetRow .tog').forEach(x => x.classList.toggle('on', x === b)); };
-  const styleLabel = o => ((fonts.find(f => f.key === o.font) || {}).name || 'Шрифт') + ' · ' + (o.mode === 'word' ? 'по слову' : 'строкой') + (o.bw ? ' · ч/б' : '');
+  const styleLabel = o => ((fonts.find(f => f.key === o.font) || {}).name || 'Шрифт') + ' · ' + 'строкой' + (o.bw ? ' · ч/б' : '');
   const dot = c => `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#${c};margin-right:6px;border:1px solid #3A3A40"></span>`;
   function paintTpl() {
     const tpls = lsGet('le_tpl'), rec = lsGet('le_recent');
     $('#tplRow').innerHTML = tpls.map((t, i) => `<button class="chip" data-tpl="${i}" style="display:flex;align-items:center">${dot(t.color)}${esc(t.name)}<span data-tdel="${i}" aria-label="Удалить шаблон" style="opacity:.6;margin-left:8px">✕</span></button>`).join('')
       + `<button class="chip" id="tplSave" style="border:1.5px dashed #3A3A40;background:transparent">+ Сохранить стиль</button>`;
-    $('#recRow').style.display = rec.length ? 'flex' : 'none';
-    $('#recRow').innerHTML = rec.length ? '<span class="mute" style="font-size:12px">Недавние</span>' + rec.map((t, i) => `<button class="chip" data-rec="${i}" style="display:flex;align-items:center;height:32px;font-size:12px">${dot(t.color)}${esc(styleLabel(t))}</button>`).join('') : '';
+    $('#recRow').style.display = 'none';
+    $('#recRow').innerHTML = false ? '<span class="mute" style="font-size:12px">Недавние</span>' + rec.map((t, i) => `<button class="chip" data-rec="${i}" style="display:flex;align-items:center;height:32px;font-size:12px">${dot(t.color)}${esc(styleLabel(t))}</button>`).join('') : '';
   }
   $('#tplRow').onclick = e => {
     const del = e.target.closest('[data-tdel]');
