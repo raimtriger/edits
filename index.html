@@ -197,6 +197,22 @@ input[type=range]{accent-color:var(--acc)}
   <button id="introSkip" type="button">Пропустить</button>
 </div>
 
+<div id="tapOv" style="display:none;position:fixed;inset:0;z-index:80;background:var(--bg);flex-direction:column;padding:18px 16px;gap:14px">
+  <div class="row" style="justify-content:space-between"><b style="font-size:18px">Расставить тапами</b><button id="tapClose" class="chip" style="background:var(--card2)">Закрыть</button></div>
+  <div id="tapSetup" style="display:flex;flex-direction:column;gap:12px">
+    <span class="mute" style="font-size:14px">Включится трек. Когда слышишь, что строка началась, жми большую кнопку. Строку можно пропустить.</span>
+    <span class="lbl">С какой строки начать</span><select id="tapLine" style="height:46px;border-radius:12px;background:var(--card);color:var(--fg);padding:0 12px;font:inherit"></select>
+    <span class="lbl">С какой секунды включить трек</span><input id="tapFrom" autocomplete="off" style="height:46px;border-radius:12px;background:var(--card);color:var(--fg);padding:0 12px;font:inherit" placeholder="0:30">
+    <span class="mute" style="font-size:12px">Включай за 5–10 секунд до этой строки. Формат 0:30 или 30.</span>
+    <button class="btn acc" id="tapGo" style="height:54px">Поехали</button></div>
+  <div id="tapRun" style="display:none;flex:1;flex-direction:column;gap:14px">
+    <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:12px;text-align:center">
+      <div class="mute" id="tapCnt" style="font-size:13px"></div>
+      <div id="tapCur" style="font-family:var(--display);font-size:28px;line-height:1.2;word-break:break-word"></div>
+      <div id="tapNxt" class="mute" style="font-size:15px"></div></div>
+    <button class="btn acc" id="tapHit" style="height:96px;font-size:20px">СТРОКА НАЧАЛАСЬ</button>
+    <div class="grid2"><button class="btn dark" id="tapSkip" style="height:48px">Пропустить строку</button><button class="btn dark" id="tapDone" style="height:48px">Готово</button></div></div>
+</div>
 <div id="app">
 <main>
 
@@ -275,6 +291,8 @@ input[type=range]{accent-color:var(--acc)}
     <label class="chip" for="lnCover" style="background:var(--card2);display:flex;align-items:center">Выбрать</label>
     <input type="file" id="lnCover" accept="image/*" class="vh">
   </div>
+  <div class="card live-only" id="tapWarn" style="display:none;flex-direction:column;gap:6px;padding:14px;border:1px solid var(--acc)"><b style="font-size:15px">Слова не поймались — времена примерные</b><span class="mute" style="font-size:13px">Так бывает на «та-та-та» и густом миксе. Расставь строки тапами, это минута.</span></div>
+  <button class="btn dark live-only" id="tapOpen" style="height:48px">Расставить строки тапами</button>
   <div id="lineList" style="display:flex;flex-direction:column;gap:8px"></div>
   <div class="mute" style="font-size:12px" id="linesNote">Жёлтым — припев, нашли сами. Шаг сдвига 0,1 с</div>
   <div class="card live-only" style="flex-direction:column;gap:12px;padding:14px">
@@ -1274,6 +1292,7 @@ $('#render').onclick = () => renderEdit().catch(err => {
     cur.autoFrag = [t.frag_start, t.frag_end];
     $('#linesMsg').textContent = '';
     go('lines'); renderLiveLines(); drawFrag();
+    $('#tapWarn').style.setProperty('display', cur.lines.some(l => l.fb) ? 'flex' : 'none', 'important');
   }
 
   /* ---- фрагмент: «от» и «до» в секундах с миллисекундами ---- */
@@ -1310,6 +1329,55 @@ $('#render').onclick = () => renderEdit().catch(err => {
     clampFrag(id === 'tmS' ? 's' : 'e'); drawFrag(); renderLiveLines();
   }));
   $('#fragPlay').onclick = () => { if (!cur) return; if (isPlaying()) stopPlayback(); else startPlayback(cur.frag_start, cur.frag_end); };
+  /* ---- расстановка строк тапами: надёжно на любых треках, ничего не считается на сервере ---- */
+  const TAP = { i: 0, taps: [] };
+  const tapKey = t => t.toLowerCase().replace(/ё/g, 'е').replace(/[^\wа-я ]/g, '').trim();
+  function tapShow() {
+    const L = cur.lines;
+    $('#tapCnt').textContent = 'Строка ' + (TAP.i + 1) + ' из ' + L.length + ' · отмечено ' + TAP.taps.length;
+    $('#tapCur').textContent = L[TAP.i] ? L[TAP.i].text : '';
+    $('#tapNxt').textContent = L[TAP.i + 1] ? 'дальше: ' + L[TAP.i + 1].text : '';
+  }
+  function tapFinish() {
+    stopPlayback(); $('#tapOv').style.display = 'none';
+    if (!TAP.taps.length) return toast('Ни одной строки не отметили');
+    const src = cur.lines, cnt = {};
+    src.forEach(l => { const k = tapKey(l.text); cnt[k] = (cnt[k] || 0) + 1; });
+    const out = TAP.taps.map(([ix, t], k) => {
+      const nw = Math.max(1, src[ix].text.split(/\s+/).length), nxt = TAP.taps[k + 1] ? TAP.taps[k + 1][1] : 1e9;
+      const end = Math.max(t + 0.5, Math.min(nxt - 0.05, t + Math.min(6, 1.2 + 0.5 * nw)));
+      return { text: src[ix].text, start: Math.round(t * 100) / 100, end: Math.round(end * 100) / 100, chorus: cnt[tapKey(src[ix].text)] > 1 };
+    });
+    cur.lines = out;
+    const first = out.find(l => l.chorus) || out[0];
+    cur.frag_start = Math.max(0, first.start - 2.5);
+    cur.frag_end = Math.min(out[out.length - 1].end + 0.4, cur.frag_start + 28);
+    clampFrag('s'); drawFrag(); renderLiveLines();
+    $('#tapWarn').style.display = 'none';
+    toast('Готово. Проверь «Слушать фрагмент» и сохрани');
+  }
+  $('#tapOpen').onclick = () => {
+    if (!cur || !cur.lines.length) return toast('Сначала нужен текст');
+    stopPlayback();
+    $('#tapLine').innerHTML = cur.lines.map((l, i) => `<option value="${i}">${i + 1}. ${esc(l.text).slice(0, 50)}</option>`).join('');
+    const ci = cur.lines.findIndex(l => l.chorus); $('#tapLine').value = String(Math.max(0, ci));
+    $('#tapFrom').value = fmtMs(Math.max(0, cur.frag_start - 5)); $('#tapSetup').style.display = 'flex'; $('#tapRun').style.display = 'none';
+    $('#tapOv').style.display = 'flex';
+  };
+  $('#tapClose').onclick = () => { stopPlayback(); $('#tapOv').style.display = 'none'; };
+  $('#tapGo').onclick = () => {
+    const from = parseTime($('#tapFrom').value); if (isNaN(from)) return toast('Формат: 0:30 или 30');
+    TAP.i = +$('#tapLine').value; TAP.taps = [];
+    $('#tapSetup').style.display = 'none'; $('#tapRun').style.display = 'flex'; tapShow();
+    startPlayback(from, DUR() + 5);
+  };
+  $('#tapHit').onclick = () => {
+    if (!isPlaying()) return toast('Трек остановился — закрой и начни заново');
+    TAP.taps.push([TAP.i, Math.max(0, player.currentTime - 0.15)]); haptic();   // поправка на реакцию пальца
+    TAP.i++; if (TAP.i >= cur.lines.length) return tapFinish(); tapShow();
+  };
+  $('#tapSkip').onclick = () => { TAP.i++; if (TAP.i >= cur.lines.length) return tapFinish(); tapShow(); };
+  $('#tapDone').onclick = tapFinish;
   $('#fragAuto').onclick = () => {
     stopPlayback(); [cur.frag_start, cur.frag_end] = cur.autoFrag; drawFrag(); renderLiveLines();
     toast(cur.instrumental ? 'Вернули самый яркий кусок' : 'Вернули припев');

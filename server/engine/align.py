@@ -213,6 +213,7 @@ def align_lines(lines: list[str], words: list[Word], total: float) -> list[dict]
         for o, c in zip(out, cnt):
             o["start"], o["end"] = t, t + (b - a) * c / tot
             t = o["end"]
+            o["fb"] = True                      # времена посчитаны «по равномерной сетке», а не услышаны: в аппке предложим расставить тапами
     for o in out:                                   # слова-времена нужны только строкам, реально пойманным; у остальных времена угаданные
         if o["start"] is None or o.get("wt") is None:
             o.pop("wt", None)

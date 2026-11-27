@@ -860,8 +860,9 @@ def process_track(t: sqlite3.Row):
     except Exception as e:
         log.warning("asr report failed: %s", e)
     if bot and chat:
-        bot.send_message(chat, f"«{t['title']}»: текст расставлен, припев найден ({fs:.0f}–{fe:.0f} с). "
-                               f"Проверь строки в аппке и жми «Смонтировать».", with_app_button=True)
+        guess = any(l.get("fb") for l in lines)
+        bot.send_message(chat, (f"«{t['title']}»: слова на записи не поймались, времена примерные. В аппке открой трек и нажми «Расставить строки тапами», это минута."
+                                if guess else f"«{t['title']}»: текст расставлен, припев найден ({fs:.0f}–{fe:.0f} с). Проверь строки в аппке и жми «Смонтировать»."), with_app_button=True)
 
 
 def process_cover(e: sqlite3.Row, t: sqlite3.Row, p: dict):
